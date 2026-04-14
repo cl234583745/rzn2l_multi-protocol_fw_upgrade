@@ -2,16 +2,24 @@
 #include "loader_table.h"
 #include "crc32_table.h"
 #include "sbl_params.h"
+#include "sbl_boot_params.h"
+#include "flash_config.h"
 #include "log.h"
 
+// 新增模块头文件
+#include "app_config.h"
+#include "bank_config.h"
+#include "loader_table_manager.h"
+#include "app_jump.h"  // SBL专用APP跳转模块
+
+
+#define RZN2_BOOT_VERSION   ("0.1.0")
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
 
 FSP_CPP_HEADER
 void R_BSP_WarmStart(bsp_warm_start_event_t event)
 BSP_PLACE_IN_SECTION(".warm_start");
 FSP_CPP_FOOTER
-
-#define RZN2_BOOT_VERSION   ("0.1.0")
 
 extern void bsp_copy_multibyte(uintptr_t * src, uintptr_t * dst, uintptr_t bytesize);
 extern const loader_table table[TABLE_ENTRY_NUM];
@@ -117,8 +125,6 @@ int fputc(int ch, FILE *f)
 void hal_entry(void)
 {
     /* TODO: add your own code here */
-    void (*app_prg)(void);
-    uint8_t table_num = 0;
 
 #if PRINTF
     __enable_irq();
@@ -135,61 +141,36 @@ void hal_entry(void)
     LOG_INFO("PI=%f\n", PI);
     LOG_INFO("%s\n", FSP_VERSION_BUILD_STRING);
 
-
-    //g_uart0.p_api->write(g_uart0.p_ctrl, (uint8_t const *)"Loader start!\n*****\nReady to Jump to the app!\n\n", strlen("Loader start!\n*****\nReady to Jump to the app!\n\n"));
     R_BSP_SoftwareDelay(500, BSP_DELAY_UNITS_MILLISECONDS);
 #endif
 
+    // 初始化硬件
     R_XSPI_QSPI_Open(g_qspi0.p_ctrl, g_qspi0.p_cfg);
-
     CRC_Init(&ctx, 0xFFFFFFFF, 0xEDB88320);  // 标准CRC32参数
-    sblCheckBootParams();
 
-    /* Copy application program with parameter in loader table. */
-    /* In this sample, application program is copied from Flash memory to System SRAM.*/
-    //这里动态计算app bin大小IMAGE_APP_FLASH_section，进行复制app的，实际升级固件app肯定会变化，需要修改预留app大小
-    for ( table_num = 0; table_num < TABLE_ENTRY_NUM; table_num++)
+    // 初始化所有模块
+    LOG_INFO("=== SBL Module Initialization ===\n");
+    SblBootParams_Init();           // SBL Boot Params 初始化
+    AppConfig_Init();               // APP 配置管理初始化
+    BankConfig_Init();              // Bank 配置管理初始化
+    LoaderTableManager_Init();      // Loader Table 管理初始化
+    AppJump_Init();                 // APP 跳转模块初始化
+    sblCheckBootParams();           // 检查 Boot Params
+
+    LOG_INFO("=== SBL Boot Process ===\n");
+    LOG_INFO("SBL Version: %s\n", RZN2_BOOT_VERSION);
+
+    // 执行APP跳转 (自动选择APP和Bank)
+    app_jump_result_t jump_result = AppJump_ToNextApp();
+
+    if (jump_result != APP_JUMP_SUCCESS)
     {
-        if (table[table_num].enable_flag == TABLE_ENABLE)
-        {
-            bsp_copy_multibyte((uintptr_t *)table[table_num].src, (uintptr_t *)table[table_num].dst, table[table_num].size);
-
-            LOG_DEBUG("table_num=%d,src=%lX,dst=%lX,size=%ld\n",table_num, (uint32_t)table[table_num].src,(uint32_t)table[table_num].dst,table[table_num].size);
-        }
-
+        LOG_ERROR("APP jump failed: %s\n", AppJump_GetResultString(jump_result));
+        LOG_ERROR("System halted\n");
+        while(1);  // 死循环
     }
 
-    LOG_INFO("Loader start! %s\n*****\nReady to Jump to the app!\n\n", RZN2_BOOT_VERSION);
-    LOG_INFO("****************************\n");
-
-    /* Ensuring data-changing */
-    __asm volatile("dsb");
-
-    R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
-
-#if PRINTF
-
-#if 0
-    if(need_upgrade)
-    {
-        extern void usb_basic_example (void);
-        usb_basic_example();
-    }
-#endif
-    g_uart0.p_api->close(g_uart0.p_ctrl);
-
-    __disable_irq();
-#endif
-
-    /* Delay */
-    R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
-
-    /* Set application program destination to app_prg */
-    app_prg = (void(*)(void))table[0].dst;
-
-    /* Jump to the application project */
-    app_prg();
-
+    // 不应该执行到这里
     while(1);
 
 }

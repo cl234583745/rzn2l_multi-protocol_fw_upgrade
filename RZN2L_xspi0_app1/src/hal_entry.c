@@ -3,7 +3,7 @@
 #include "ecatappl.h"
 #include "ecatslv.h"
 #include "applInterface.h"
-#include "r_fw_up_rz_if.h"
+
 #if (CiA402_SAMPLE_APPLICATION == 1)
 #include "cia402appl.h"
 #else
@@ -14,9 +14,10 @@
 #include <stdio.h>
 #include "log.h"
 
+#define RZN2_APP1_VERSION   ("0.1.0")
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
 
-#define RZN2_APP1_VERSION   ("0.1.0")
+
 
 FSP_CPP_HEADER
 void R_BSP_WarmStart(bsp_warm_start_event_t event)
@@ -114,6 +115,9 @@ int fputc(int ch, FILE *f)
  **********************************************************************************************************************/
 void hal_entry(void)
 {
+    // 启用中断 (SBL在跳转前禁用了中断)
+    __enable_irq();
+
 #if 0
     /* TODO: add your own code here */
     __enable_irq();
@@ -141,9 +145,9 @@ void hal_entry(void)
     /* Open the transfer instance with initial configuration. */
     err = R_SCI_UART_Open(&g_uart0_ctrl, &g_uart0_cfg);
     handle_error(err);
-    g_uart0.p_api->write(g_uart0.p_ctrl, (uint8_t const *)"App start!\n", strlen("App start!\n"));
+    g_uart0.p_api->write(g_uart0.p_ctrl, (uint8_t const *)"\n\nApp start!\n\n", strlen("App start!\n"));
     R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
-    LOG_INFO("App start! %s\n", RZN2_APP1_VERSION);
+    LOG_INFO("App start! APP1 Version:%s\n", RZN2_APP1_VERSION);
 
     LOG_INFO("date:%s\ntime:%s\nfile:%s\nfunc:%s,line:%d\nhello world!\n", __DATE__, __TIME__, __FILE__, __FUNCTION__, __LINE__);
 

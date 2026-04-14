@@ -27,9 +27,7 @@
 #include "samplefoe.h"
 #undef _FOE_SAMPLE_APPLICATION_
 
-#ifdef FW_PARSE_SREC
-#include "r_fw_up_rz_if.h"
-#endif
+
 #include "flash_config.h"
 #include "hal_data.h"
 #include <stdio.h>

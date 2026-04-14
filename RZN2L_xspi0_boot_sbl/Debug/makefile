@@ -86,7 +86,7 @@ endif
 
 # Add inputs and outputs from these tool invocations to the build variables 
 SECONDARY_FLASH += \
-RZN2L_xspi0_boot_sbl.srec \
+RZN2L_xspi0_boot_sbl.bin \
 
 SECONDARY_SIZE += \
 RZN2L_xspi0_boot_sbl.siz \
@@ -104,8 +104,8 @@ main-build: RZN2L_xspi0_boot_sbl.elf secondary-outputs
 RZN2L_xspi0_boot_sbl.elf: $(OBJS) $(USER_OBJS) $(LIBRARY_GENERATOR_OUTPUTTYPE_OUTPUTS) $(LINKER_SCRIPT)
 	$(file > RZN2L_xspi0_boot_sbl.elf.in,-mcpu=cortex-r52 -mthumb -mfloat-abi=hard -mfpu=neon-fp-armv8 -fdiagnostics-parseable-fixits -O1 -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-strict-aliasing -Wunused -Wuninitialized -Wall -Wextra -Wmissing-declarations -Wconversion -Wpointer-arith -Wshadow -Wlogical-op -Waggregate-return -Wfloat-equal -Wnull-dereference -g -o "RZN2L_xspi0_boot_sbl.elf" -Wl,--start-group $(OBJS) $(USER_OBJS) -Wl,--end-group -T "fsp_xspi0_boot_loader.ld" -L"E:\\RS_workspace\\RZN2L_Multi-protocol_FW_Upgrade\\RZN2L_xspi0_boot_sbl/script" -Wl,--start-group  -Wl,--end-group -nostartfiles -Xlinker --gc-sections -Wl,-Map,"RZN2L_xspi0_boot_sbl.map" --specs=nano.specs -u _printf_float --specs=nosys.specs -Wl,-esystem_init)
 	@echo Building target: $@ && arm-none-eabi-gcc @"RZN2L_xspi0_boot_sbl.elf.in"
-RZN2L_xspi0_boot_sbl.srec: RZN2L_xspi0_boot_sbl.elf
-	arm-none-eabi-objcopy -O srec "RZN2L_xspi0_boot_sbl.elf"  "RZN2L_xspi0_boot_sbl.srec"
+RZN2L_xspi0_boot_sbl.bin: RZN2L_xspi0_boot_sbl.elf
+	arm-none-eabi-objcopy -O binary "RZN2L_xspi0_boot_sbl.elf"  "RZN2L_xspi0_boot_sbl.bin"
 RZN2L_xspi0_boot_sbl.siz: RZN2L_xspi0_boot_sbl.elf
 	arm-none-eabi-size --format=berkeley "RZN2L_xspi0_boot_sbl.elf"
 # Other Targets

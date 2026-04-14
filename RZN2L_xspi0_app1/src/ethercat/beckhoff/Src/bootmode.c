@@ -39,513 +39,7 @@ V4.20: File created
 #include "renesashw.h"
 #include "bootmode.h"
 
-#ifdef FW_PARSE_SREC
-#define    DEBUG 					1
-#define    DIRECR_ES_WR_LDR 		0
-#define    _BOOTMODE_ 1
-#include "bootmode.h"
-#undef _BOOTMODE_
 
-#ifdef __ICCARM__
-#include "intrinsics.h"												// intrinsic functions header
-#endif // __iccarm__
-
-/* Access to Firmware updata API */
-#include "hal_data.h"
-#include "r_fw_up_rz_if.h"
-
-bool BL_IsSectorErased(uint16_t offset_sector_number);
-void BL_EraseSector(uint16_t offset_sector_number);
-extern void handle_error(fsp_err_t err);
-
-/*--------------------------------------------------------------------------------------
-------
-------    local Types and Defines
-------
---------------------------------------------------------------------------------------*/
-#define BL_WRITE_BUFFER_SIZE		FW_UP_PAGE_SIZE		// Byte
-#define BL_DATA_STATUS_IDLE			(0)					// Idle
-#define BL_DATA_STATUS_ERASE_START	(1)					// Flash Erase
-#define BL_DATA_STATUS_ERASE		(2)					// Flash Erase
-#define BL_DATA_STATUS_WRITE		(3)					// Data write to Flash
-#define BL_DATA_STATUS_ERASE_LDRPRM	(4)					// LdrPrm Erase
-#define BL_DATA_STATUS_WRITE_LDRPRM	(5)					// LdrPrm Update
-#define BL_DATA_STATUS_SII_UPDATE	(6)					// SII Update
-
-/*-----------------------------------------------------------------------------------------
-------
-------    local variables and constants
-------
------------------------------------------------------------------------------------------*/
-static UINT8  FlashWriteBuffer[BL_WRITE_BUFFER_SIZE];
-static UINT8  EraseSectorNumber;
-static UINT16 EraseSectorFlag;
-static UINT8  DataStatus = BL_DATA_STATUS_IDLE;
-static BOOL   bReBoot;
-
-/*-----------------------------------------------------------------------------------------
-------
-------    Module internal function declarations
-------
------------------------------------------------------------------------------------------*/
-static void BL_SectorIsErased(uint16_t offset_sector_number);
-/*-----------------------------------------------------------------------------------------
-------
-------    Module internal variable definitions
-------
------------------------------------------------------------------------------------------*/
-BSP_DONT_REMOVE const uint32_t g_identify[4] BSP_PLACE_IN_SECTION(".identify") = {(VENDOR_ID), (PRODUCT_CODE), (REVISION_NUMBER), (SERIAL_NUMBER)};
-
-/******************************************************************************
-* Function Name: BL_Start
-* Description  : Boot Loader start function
-* Arguments    : State  -- Current State
-* Return Value : None
-******************************************************************************/
-void BL_Start( UINT8 State)
-{
-	(void)State;
-#if DEBUG
-	printf("%s State=%d\n", __FUNCTION__,State);
-#endif
-#if 0
-	char buffer[] = "BL_Start\n";
-	R_SCI_UART_Write(&g_uart0_ctrl, (uint8_t*) &buffer, 9);
-#endif
-
-} /* BL_Start() */
-
-/******************************************************************************
-* Function Name: BL_Stop
-* Description  : Called in the state transition from BOOT to Init
-* Arguments    : None
-* Return Value : None
-******************************************************************************/
-void BL_Stop(void)
-{
-#if DEBUG
-	printf("%s\n", __FUNCTION__);
-#endif
-}
-
-/******************************************************************************
-* Function Name: BL_StartDownload
-* Description  : File download start function
-* Arguments    : password -- download password
-* Return Value : None
-******************************************************************************/
-void BL_StartDownload(UINT32 password)
-{
-	fw_up_return_t status;
-
-	status = fw_up_open();					// Initialize firmware update function
-	handle_error((fsp_err_t)status);
-
-	EraseSectorNumber = 0;
-	EraseSectorFlag = 0;
-
-#if (BANK == 0)
-	/* Copy the loader param of BANK0 to FlashWriteBuffer. */
-	FWUPMEMCPY(&FlashWriteBuffer[0], (UINT8 *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET), FW_UP_PAGE_SIZE);
-#elif (BANK == 1)
-    /* Copy the loader param of BANK1 to FlashWriteBuffer. */
-    FWUPMEMCPY(&FlashWriteBuffer[0], (UINT8 *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET), FW_UP_PAGE_SIZE);
-#endif
-
-	DataStatus = BL_DATA_STATUS_ERASE_LDRPRM;
-
-	FSP_PARAMETER_NOT_USED(password);
-#if DEBUG
-	printf("%s FlashWriteBuffer:\n", __FUNCTION__);
-	for(int i = 20; i < 24; i++)
-	{
-		printf("%02X", FlashWriteBuffer[i]);
-	}printf("\n\n");
-#endif
-} /* BL_StartDownload() */
-
-/******************************************************************************
-* Function Name: BL_Data
-* Description  : File data receive function
-* Arguments    : pData -- Data pointer
-*              : Size  -- Data Length
-* Return Value : FoE error code
-******************************************************************************/
-EEPBUFFER     Buffer;
-
-UINT16 BL_Data(UINT16 *pData,UINT16 Size)
-{
-	UINT16 ErrorCode = 0;
-	UINT8  LastData;
-	UINT32 i;
-	UINT32 ldr_addr;
-
-	fw_up_return_t status;
-    spi_flash_status_t status_erase;
-
-#if (BANK == 0)
-    volatile UINT32 *pIdentify = (UINT32 *)(FW_UP_BANK1_ADDR + FW_UP_APPLI_ID_OFFSET - FW_UP_MIRROR_OFFSET);    // Identify section address
-#elif (BANK == 1)
-    volatile UINT32 *pIdentify = (UINT32 *)(FW_UP_BANK0_ADDR + FW_UP_APPLI_ID_OFFSET - FW_UP_MIRROR_OFFSET);    // Identify section address
-#endif
-
-#if DEBUG
-	printf("->S%d ", DataStatus);
-#endif
-	switch(DataStatus)
-	{
-	case BL_DATA_STATUS_ERASE_START:
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		if(true != status_erase.write_in_progress)														// In write progress ?
-		{
-#if (FW_UP_FLASH_TYPE == 1)
-			/* For following sequnces, set protocol 1S-1S-1S */
-			R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_1S_1S);
-#endif
-
-#if (BANK == 0)
-			/* Erase 1sector(64KB) of BANK1 */
-			R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK1_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),
-							  (uint32_t)FW_UP_SECTOR_SIZE);
-			printf("BL_DATA_STATUS_ERASE_START erase %x %d\n",(uint8_t *)(FW_UP_BANK1_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),FW_UP_SECTOR_SIZE);
-#elif (BANK == 1)
-            /* Erase 1sector(64KB) of BANK0 */
-            R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK0_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),
-                              (uint32_t)FW_UP_SECTOR_SIZE);
-            printf("BL_DATA_STATUS_ERASE_START erase %x %d\n",(uint8_t *)(FW_UP_BANK0_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),FW_UP_SECTOR_SIZE);
-#endif
-
-			DataStatus = BL_DATA_STATUS_ERASE;
-
-		}
-		ErrorCode = FOE_MAXBUSY_ZERO;				// return "BUSY"
-#if DEBUG
-		printf("%s BL_DATA_STATUS_ERASE:_START FW_UP_BANK1_ADDR:EraseSectorNumber=%d\n", __FUNCTION__, EraseSectorNumber);
-		printf("change=%d\n\n", DataStatus);
-#endif
-		break;
-
-	case BL_DATA_STATUS_ERASE:
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		if(true != status_erase.write_in_progress)														// Is flash erasing end ?
-		{
-			BL_SectorIsErased(EraseSectorNumber);   // Update EraseSectorFlag.
-			status = analyze_and_write_data((const uint8_t *)pData, (uint32_t)Size);					// yes. data copy to write buffer
-			handle_error((fsp_err_t)status);
-			DataStatus = BL_DATA_STATUS_WRITE;
-		}
-		else
-		{
-			ErrorCode = FOE_MAXBUSY_ZERO;									// no. return "BUSY"
-		}
-#if DEBUG
-		printf("%s BL_DATA_STATUS_ERASE: Size=%d \n", __FUNCTION__,Size);
-		printf("change=%d\n\n", DataStatus);
-#endif
-		break;
-
-	case BL_DATA_STATUS_WRITE:
-		LastData = (Size != (u16ReceiveMbxSize - MBX_HEADER_SIZE - FOE_HEADER_SIZE));
-		status = analyze_and_write_data((const uint8_t *)pData, (uint32_t)Size);	// data copy to write buffer and write to flash
-		
-		handle_error((fsp_err_t)status);
-		if(LastData == TRUE)											// last receive data ?
-		{
-#if (FW_UP_FLASH_TYPE == 1)
-			/* For following sequnces, set protocol 1S-4S-4S */
-			R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_4S_4S);
-#endif
-#if (BANK == 0)
-			/* Copy the loader param of BANK1 to FlashWriteBuffer. */
-			FWUPMEMCPY(&FlashWriteBuffer[0], (UINT8 *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET), FW_UP_PAGE_SIZE);
-			printf("BL_DATA_STATUS_WRITE LastData=%x\n",(UINT8 *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET));
-#elif (BANK == 1)
-            /* Copy the loader param of BANK0 to FlashWriteBuffer. */
-            FWUPMEMCPY(&FlashWriteBuffer[0], (UINT8 *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET), FW_UP_PAGE_SIZE);
-            printf("BL_DATA_STATUS_WRITE LastData=%x\n",(UINT8 *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET));
-#endif
-
-			DataStatus = BL_DATA_STATUS_ERASE_LDRPRM;					// yes. next -> erase ldrprm.
-			ErrorCode = FOE_MAXBUSY_ZERO;								// return "BUSY"
-#if DEBUG
-			printf("%s BL_DATA_STATUS_WRITE:\n", __FUNCTION__);
-			for(int j = 20; j < 24; j++)
-			{
-				printf("%02X", FlashWriteBuffer[j]);
-			}printf("\n\n");
-
-			printf("change=%d\n\n", DataStatus);
-#endif
-		}
-		break;
-
-	case BL_DATA_STATUS_ERASE_LDRPRM:
-#if DIRECR_ES_WR_LDR
-		DataStatus = BL_DATA_STATUS_WRITE_LDRPRM;
-		printf("DIRECR_ES_WR_LDR\n");
-		printf("change=%d\n\n", DataStatus);
-		//R_BSP_SoftwareDelay(50, BSP_DELAY_UNITS_MILLISECONDS);
-		ErrorCode = FOE_MAXBUSY_ZERO;
-#else
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		if(true != status_erase.write_in_progress)							// Is flash erasing end ?
-		{
-#if (FW_UP_FLASH_TYPE == 1)
-			/* For following sequnces, set protocol 1S-1S-1S */
-			R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_1S_1S);
-#endif
-			/* Erase flash memory from 0x6000_0000 to 0x6000_1000 */
-			R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)FW_UP_LDRPRM_ADDR, FW_UP_SECTOR_SIZE_4K);
-			DataStatus = BL_DATA_STATUS_WRITE_LDRPRM;							// next -> update ldrprm.
-			printf("BL_DATA_STATUS_ERASE_LDRPRM FW_UP_LDRPRM_ADDR=%x\n",FW_UP_LDRPRM_ADDR);
-		}
-		ErrorCode = FOE_MAXBUSY_ZERO;										// return "BUSY"
-#if DEBUG
-		printf("%s BL_DATA_STATUS_ERASE_LDRPRM: FW_UP_LDRPRM_ADDR FW_UP_SECTOR_SIZE_4K\n", __FUNCTION__);
-		printf("change=%d\n\n", DataStatus);
-#endif//DEBUG
-#endif//DIRECR_ES_WR_LDR
-		break;
-
-	case BL_DATA_STATUS_WRITE_LDRPRM:
-#if DIRECR_ES_WR_LDR
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		if(true != status_erase.write_in_progress)							// Is flash erasing end ?
-		{
-			R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)FW_UP_LDRPRM_ADDR, FW_UP_SECTOR_SIZE_4K);
-			//DataStatus = BL_DATA_STATUS_WRITE_LDRPRM;							// next -> update ldrprm.
-			R_BSP_SoftwareDelay(50, BSP_DELAY_UNITS_MILLISECONDS);
-		}
-		else
-		{
-			ErrorCode = FOE_MAXBUSY_ZERO;										// return "BUSY"
-			break;
-		}
-#endif//DIRECR_ES_WR_LDR
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		if(true != status_erase.write_in_progress)							// Is flash erasing end ?
-		{
-#if (FW_UP_FLASH_TYPE == 1)
-			/* For following sequnces, set protocol 1S-1S-1S */
-			R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_1S_1S);
-#endif
-			/* Write FlashWriteBuffer[0 - 255] to loder param area (from 0x6000_0000 to 0x6000_1000)*/
-			for ( i = 0; i < FW_UP_PAGE_SIZE / FW_UP_WRITE_ATONCE_SIZE ; i++)
-			{
-				R_XSPI_QSPI_Write(&g_qspi0_ctrl, &FlashWriteBuffer[0 + (i * FW_UP_WRITE_ATONCE_SIZE)], 
-								  (uint8_t *)(FW_UP_LDRPRM_ADDR + (i * FW_UP_WRITE_ATONCE_SIZE) - FW_UP_MIRROR_OFFSET),
-								  (uint32_t)FW_UP_WRITE_ATONCE_SIZE);
-				do
-				{
-					(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-				} while (true == status_erase.write_in_progress);
-			}
-#if (FW_UP_FLASH_TYPE == 1)
-			/* For following sequnces, set protocol 1S-4S-4S */
-			R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_4S_4S);
-#endif
-			ldr_addr = *(UINT32 *)(&FlashWriteBuffer[FW_UP_LDRPRM_LDR_ADDR - FW_UP_LDRPRM_ADDR]);
-			printf("BL_DATA_STATUS_WRITE_LDRPRM ldr_addr=%x\n",ldr_addr);
-#if (BANK == 0)
-			if((ldr_addr & FW_UP_BANK0_ADDR) == FW_UP_BANK0_ADDR)			// recover BANK0 LDRPRM ?
-#elif (BANK == 1)
-            if((ldr_addr & FW_UP_BANK1_ADDR) == FW_UP_BANK1_ADDR)           // recover BANK1 LDRPRM ?
-#endif
-			{
-				DataStatus = BL_DATA_STATUS_ERASE_START;					// yes. next -> erase BANK
-			}
-			else
-			{
-				DataStatus = BL_DATA_STATUS_SII_UPDATE;						// No. write BANK LDRPRM next -> update SII.
-			}
-			ErrorCode = FOE_MAXBUSY_ZERO;									// return "BUSY"
-		}
-		else
-		{
-			ErrorCode = FOE_MAXBUSY_ZERO;									// no. return "BUSY"
-		}
-#if DEBUG
-		printf("%s BL_DATA_STATUS_WRITE_LDRPRM: ldr_addr=%x\n", __FUNCTION__,ldr_addr);
-		for(int k = 20; k < 24; k++)
-		{
-			printf("%02X", FlashWriteBuffer[k]);
-		}printf("\n\n");
-		printf("change=%d\n\n", DataStatus);
-#endif
-		break;
-
-	case BL_DATA_STATUS_SII_UPDATE:
-#if (FW_UP_FLASH_TYPE == 1)
-		/* For following sequnces, set protocol 1S-4S-4S */
-		R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_4S_4S);
-#endif
-		//--------------------------------------------------
-		// SII update, update firmware Revision Number
-		//--------------------------------------------------
-		for ( i = 0; i < 4 ; i++)											// get new firmware identify 
-		{
-			Buffer.dword[i] = *pIdentify++;
-		}
-		ESC_EepromAccess(SII_EEP_IDENTIFY_OFFSET + SII_EEP_REVESIONNO, 2, &Buffer.word[SII_EEP_REVESIONNO], ESC_WR);
-		printf("BL_DATA_STATUS_SII_UPDATE Buffer.word[SII_EEP_REVESIONNO]=%x\n",Buffer.word[SII_EEP_REVESIONNO]);
-		fw_up_close();
-		BL_SetRebootFlag(TRUE);												// yes. reboot is available.
-#if DEBUG
-		printf("%s BL_DATA_STATUS_SII_UPDATE: revision=%x\n", __FUNCTION__,Buffer.word[SII_EEP_REVESIONNO]);
-		printf("change=%d\n\n", DataStatus);
-#endif
-		break;
-	case BL_DATA_STATUS_IDLE:
-	default:
-		break;
-	}
-
-	return(ErrorCode);
-} /* BL_Data() */
-
-/******************************************************************************
-* Function Name: BL_SetRebootFlag
-* Description  : Reboot flag set function
-* Arguments    : Flag -- TRUE/FALSE
-* Return Value : None
-******************************************************************************/
-void BL_SetRebootFlag(BOOL Flag)
-{
-	bReBoot = Flag;
-}
-
-/******************************************************************************
-* Function Name: BL_CheckRebootFlag
-* Description  : Check reboot flag function
-* Arguments    : None
-* Return Value : Flag
-******************************************************************************/
-BOOL BL_CheckRebootFlag(void)
-{
-	return(bReBoot);
-}
-
-
-/******************************************************************************
-* Function Name: BL_Reboot
-* Description  : Reboot boot loader function
-* Arguments    : None
-* Return Value : None
-******************************************************************************/
-void BL_Reboot(void)
-{
-#if (FW_UP_DUAL_BANK_MODE)	// Daul mode
-	uint32_t reset_vector_value;
-    fw_up_return_t flash_status;
-    bool reset_vector_ok = false;
-
-	/* get reset vector of the BANK1 */
-	reset_vector_value = *(uint32_t*)(Bank[FW_UP_BANK1].high_addr - (sizeof(uint32_t*) - 1u));
-	/* The reset vector is checked to see if the address is within the range of BANK0 */
-	if(reset_vector_value != FW_UP_BLANK_VALUE)
-	{
-		reset_vector_ok = fw_up_check_addr_value(reset_vector_value, FW_UP_BANK0);
-	}
-
-    if (reset_vector_ok)
-    {
-        flash_status = bank_toggle();
-        if (FW_UP_SUCCESS == flash_status)
-        {
-            /* soft reset */
-            fw_up_soft_reset();
-        }
-        else
-        {
-            // Do Nothing!
-        }
-    }
-    else
-    {
-        // Do Nothing!
-    }
-
-#else  // if (FW_UP_DUAL_BANK_MODE)
-
-	R_BSP_RegisterProtectDisable(BSP_REG_PROTECT_LPC_RESET);
-	R_BSP_SystemReset();	// System Software Reset
-	while(1)
-	{
-		/* Do nothing */
-	};
-#endif  // if (FW_UP_DUAL_BANK_MODE)
-
-} /* BL_Reboot() */
-
-/******************************************************************************
-* Function Name: BL_IsSectorErased
-* Description  : Check if sector is erased 
-* Arguments    : Sector number
-* Return Value : None
-******************************************************************************/
-bool BL_IsSectorErased(uint16_t offset_sector_number)
-{
-	if((1U << offset_sector_number) & EraseSectorFlag)
-	{
-		return(true);
-	}
-	else
-	{
-		return(false);
-	}
-} /* BL_IsSectorErased */
-
-/******************************************************************************
-* Function Name: BL_EraseSector
-* Description  : Erase the sector
-* Arguments    : Sector number
-* Return Value : None
-******************************************************************************/
-void BL_EraseSector(uint16_t offset_sector_number)
-{
-	volatile uint16_t dummy16;
-    spi_flash_status_t status_erase;
-
-	EraseSectorNumber = (uint8_t)offset_sector_number;
-#if (FW_UP_FLASH_TYPE == 1)
-    /* For following sequnces, set protocol 1S-1S-1S */
-    R_XSPI_QSPI_SpiProtocolSet(&g_qspi0_ctrl, SPI_FLASH_PROTOCOL_1S_1S_1S);
-#endif
-#if (BANK == 0)
-    /* Erase 1sector(64KB) of BANK1 */
-    R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK1_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),
-					  (uint32_t)FW_UP_SECTOR_SIZE);
-#elif (BANK == 1)
-    /* Erase 1sector(64KB) of BANK0 */
-    R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK0_ADDR + (EraseSectorNumber * FW_UP_SECTOR_SIZE)),
-                      (uint32_t)FW_UP_SECTOR_SIZE);
-#endif
-
-	do
-	{
-		(void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-		HW_EscReadWord(dummy16, ESC_EEPROM_CONFIG_OFFSET);			// Countermeasure against PD watchdog timeout
-		R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
-
-	} while (true == status_erase.write_in_progress);
-
-	BL_SectorIsErased(EraseSectorNumber);
-
-	FSP_PARAMETER_NOT_USED(dummy16);
-} /* BL_EraseSector */
-
-/******************************************************************************
-* Function Name: BL_SectorIsErased
-* Description  : Set erased sector flag
-* Arguments    : Sector number
-* Return Value : None
-******************************************************************************/
-static void BL_SectorIsErased(uint16_t offset_sector_number)
-{
-	EraseSectorFlag |= (uint16_t)(1U << offset_sector_number);
-} /* BL_SectorIsErased */
-
-#else
 
 
 #include "flash_config.h"
@@ -554,6 +48,8 @@ static void BL_SectorIsErased(uint16_t offset_sector_number)
 #include "bsp_r52_global_counter.h"
 #include "sbl_params.h"
 #include "ecat_foe_data.h"
+#include "sbl_boot_params.h"
+#include "bank_detection.h"
 #include "log.h"
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
@@ -568,11 +64,44 @@ static volatile uint64_t endTime = 0;
 CRC_Context ctx;
 static BOOL   bReBoot;
 
-#if (BANK == 0)
-BSP_DONT_REMOVE const uint8_t g_header[HEADER_PARAMS_LENS] BSP_PLACE_IN_SECTION(".header") = {"APP1BANK0" };
-#elif (BANK == 1)
-BSP_DONT_REMOVE const uint8_t g_header[HEADER_PARAMS_LENS] BSP_PLACE_IN_SECTION(".header") = {"APP1BANK1" };
+// ============================================================================
+// APP1固件版本号定义 (易读、易修改、易比较)
+// ============================================================================
+// 格式: Major.Minor.Patch (语义化版本规范)
+// 例如: 1.2.3 表示主版本1，次版本2，补丁版本3
+// 每个字段范围: 0-255，足够使用
+// 
+// 修改方法: 直接修改下面的数字即可
+// 例如: 发布v2.1.0版本，修改为:
+//       #define APP1_VERSION_MAJOR  2
+//       #define APP1_VERSION_MINOR  1
+//       #define APP1_VERSION_PATCH  0
+// ============================================================================
+#ifndef APP1_VERSION_MAJOR
+#define APP1_VERSION_MAJOR  1
 #endif
+
+#ifndef APP1_VERSION_MINOR
+#define APP1_VERSION_MINOR  0
+#endif
+
+#ifndef APP1_VERSION_PATCH
+#define APP1_VERSION_PATCH  0
+#endif
+
+// 自动组合版本号 (无需手动修改)
+// 格式: 0x00MMmmpp (MM=Major, mm=Minor, pp=Patch)
+// 例如: v1.2.3 -> 0x00010203
+#define APP1_VERSION ((APP1_VERSION_MAJOR << 16) | (APP1_VERSION_MINOR << 8) | APP1_VERSION_PATCH)
+
+BSP_DONT_REMOVE const uint8_t g_header[HEADER_PARAMS_LENS] BSP_PLACE_IN_SECTION(".header") = {
+    'A', 'P', 'P',  // "APP"
+    (APP1_VERSION >> 0) & 0xFF,  // Patch
+    (APP1_VERSION >> 8) & 0xFF,  // Minor
+    (APP1_VERSION >> 16) & 0xFF, // Major
+    (APP1_VERSION >> 24) & 0xFF  // 保留(0x00)
+};
+
 BSP_DONT_REMOVE const uint32_t g_identify[4] BSP_PLACE_IN_SECTION(".identify") = {(VENDOR_ID), (PRODUCT_CODE), (REVISION_NUMBER), (SERIAL_NUMBER)};
 
 
@@ -614,6 +143,12 @@ void BL_Start( UINT8 State)
 
     CRC_Init(&ctx, 0xFFFFFFFF, 0xEDB88320);  // 标准CRC32参数
 
+    // 初始化Bank检测
+    BankDetection_Init();
+
+    // 初始化Boot Params
+    SblBootParams_Init();
+
 #if 0//test crc32
     LOG_DEBUG("=== CRC32 Test ===\n\n");
 
@@ -628,8 +163,20 @@ void BL_Start( UINT8 State)
     memset(&ota_handle, 0 , sizeof(ota_handle_t));
     Queue_Init((Circular_queue_t*)&Circular_queue);
 
+    // 设置版本号检查选项 (从Boot Params读取)
+    sbl_boot_params_t sbl_boot_params;
+    if (SblBootParams_Read(&sbl_boot_params) && SblBootParams_ValidateCRC(&sbl_boot_params))
+    {
+        ota_handle.version_check_enabled = (sbl_boot_params.version_check_enable != 0);
+    }
+    else
+    {
+        // 默认启用版本号检查
+        ota_handle.version_check_enabled = true;
+    }
+
 #if DEBUG
-    LOG_INFO("%s State=%d\n", __FUNCTION__,State);
+    LOG_INFO("%s State=%d, VersionCheck=%d\n", __FUNCTION__, State, ota_handle.version_check_enabled);
 #endif
 #if 0
     char buffer[] = "BL_Start\n";
@@ -652,60 +199,122 @@ void BL_StartDownload(UINT32 password)
 
     beginTime =  getGlobalCounter();
 
-    checkAndUpdataBootBankParams();
-
-    // may be only erase 64KB one time, try 128KB failed
-    for(uint8_t i = 0; i < FW_UP_TOTAL_SIZE/FW_UP_SECTOR_SIZE; i++)
+    // 获取当前Bank
+    uint8_t current_bank = BankDetection_GetCurrentBank();
+    if (current_bank == BANK_UNKNOWN)
     {
-
-#if (BANK == 0)
-        /* Erase 1sector of BANK1 */
-        R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK1_ADDR + (i * FW_UP_SECTOR_SIZE)),(uint32_t)FW_UP_SECTOR_SIZE);
-#elif (BANK == 1)
-        /* Erase 1sector of BANK0 */
-        R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK0_ADDR + (i * FW_UP_SECTOR_SIZE)),(uint32_t)FW_UP_SECTOR_SIZE);
-#endif
-
-        spi_flash_status_t status_erase;
-        volatile uint16_t dummy16;
-        do
-        {
-            (void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-            HW_EscReadWord(dummy16, ESC_EEPROM_CONFIG_OFFSET);          // Countermeasure against PD watchdog timeout
-            R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
-            (void)dummy16;
-
-        } while (true == status_erase.write_in_progress);
+        LOG_ERROR("BL_StartDownload: Unknown current bank!\n");
+        return;
     }
+
+    // 确定目标Bank (将在BL_Data中根据固件头确定)
+    ota_handle.target_bank = BANK_UNKNOWN;
+
+    LOG_INFO("BL_StartDownload: Current Bank=%d, waiting for firmware header...\n", current_bank);
+
+    // 暂不擦除Flash，等收到固件头并验证后再擦除
 }
 
 UINT16 BL_Data(UINT16 *pData,UINT16 Size)
 {
     UINT16 ErrorCode = 0;
+    uint8_t current_bank = BankDetection_GetCurrentBank();
 
-
+    // 首次接收: 解析固件头并验证
     if(ota_handle.recv_offset == 0)
     {
-        app_header_t *current_header = (app_header_t *)pData;
-        memcpy(&ota_handle.current_header, current_header, sizeof(app_header_t));
+        app_header_t *fw_header = (app_header_t *)pData;
 
-        //todo
-        //校验当前运行bank与接收到的bank是否一致，一致则失败，不同则继续
+        // 1. 验证固件魔数 "APP"
+        if (memcmp(fw_header->header_app, "APP", 3) != 0)
+        {
+            LOG_ERROR("Invalid firmware magic! Expected 'APP', got '%c%c%c'\n",
+                      fw_header->header_app[0], fw_header->header_app[1], fw_header->header_app[2]);
+            return FOE_ERROR;
+        }
+
+        // 2. 保存固件头
+        memcpy(&ota_handle.current_header, fw_header, sizeof(app_header_t));
+
+        LOG_INFO("Firmware Header: Version=0x%08X, TargetBank=%d, Len=%ld\n",
+                 fw_header->header_version,
+                 fw_header->header_target_bank,
+                 fw_header->header_len);
+
+        // 3. 版本号检查
+        if (ota_handle.version_check_enabled)
+        {
+            if (!SblBootParams_CheckVersionUpgrade(fw_header->header_version))
+            {
+                LOG_ERROR("Version check failed! Upgrade rejected.\n");
+                return FOE_ERROR;
+            }
+        }
+        else
+        {
+            LOG_INFO("Version check disabled, skip version validation.\n");
+        }
+
+        // 4. 确定目标Bank
+        if (fw_header->header_target_bank == BANK_UNKNOWN)
+        {
+            // 自动模式: 写入另一个Bank
+            ota_handle.target_bank = BankDetection_GetTargetBank(current_bank);
+        }
+        else
+        {
+            // 强制模式: 检查有效性
+            if (!BankDetection_IsTargetBankValid(fw_header->header_target_bank, current_bank))
+            {
+                LOG_ERROR("Invalid target bank! current=%d, target=%d\n",
+                          current_bank, fw_header->header_target_bank);
+                return FOE_ERROR;
+            }
+            ota_handle.target_bank = fw_header->header_target_bank;
+        }
+
+        LOG_INFO("Firmware upgrade: Bank%d -> Bank%d\n", current_bank, ota_handle.target_bank);
+
+        // 5. 擦除目标Bank
+        uint32_t target_addr = BankDetection_GetBankAddress(ota_handle.target_bank);
+        LOG_INFO("Erasing Bank%d at 0x%08X...\n", ota_handle.target_bank, target_addr);
+
+        for(uint8_t i = 0; i < FW_UP_TOTAL_SIZE/FW_UP_SECTOR_SIZE; i++)
+        {
+            R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
+                              (uint8_t *)(target_addr + (i * FW_UP_SECTOR_SIZE)),
+                              FW_UP_SECTOR_SIZE);
+
+            spi_flash_status_t status_erase;
+            volatile uint16_t dummy16;
+            do
+            {
+                R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
+                HW_EscReadWord(dummy16, ESC_EEPROM_CONFIG_OFFSET);
+                R_BSP_SoftwareDelay(1, BSP_DELAY_UNITS_MILLISECONDS);
+                (void)dummy16;
+            } while (status_erase.write_in_progress);
+        }
+
+        LOG_INFO("Bank%d erased successfully!\n", ota_handle.target_bank);
     }
 
+    // 写入数据到环形队列
     Queue_Wirte(&Circular_queue, (uint8_t*) ((uint8_t*)pData), Size);
+
+    // 队列满一页时写入Flash
     if(Queue_HadUse(&Circular_queue) >= FW_UP_PAGE_SIZE)
     {
         Queue_Read(&Circular_queue, ota_handle.Read_Buffer, FW_UP_PAGE_SIZE);
-#if (BANK == 0)
-        norFlashPageProgram((uint8_t *)(FW_UP_BANK1_ADDR + ota_handle.write_offset), ota_handle.Read_Buffer, FW_UP_PAGE_SIZE);
-#elif (BANK == 1)
-        norFlashPageProgram((uint8_t *)(FW_UP_BANK0_ADDR + ota_handle.write_offset), ota_handle.Read_Buffer, FW_UP_PAGE_SIZE);
-#endif
+
+        uint32_t target_addr = BankDetection_GetBankAddress(ota_handle.target_bank);
+        norFlashPageProgram((uint8_t *)(target_addr + ota_handle.write_offset),
+                            ota_handle.Read_Buffer,
+                            FW_UP_PAGE_SIZE);
         ota_handle.write_offset += FW_UP_PAGE_SIZE;
     }
 
-    // 1 to n-1 times
+    // 1 to n-1 times: 显示进度
     if((ota_handle.recv_offset > 0) && (ota_handle.current_header.header_len - ota_handle.recv_offset > FW_UP_PACKAGE_SIZE))
     {
         LOG_INFO("P:%ld%% ", ota_handle.write_offset*100/ota_handle.current_header.header_len);
@@ -716,120 +325,87 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         uint16_t lastDataLen = Queue_HadUse(&Circular_queue);
 
         Queue_Read(&Circular_queue, ota_handle.Read_Buffer, lastDataLen);
-#if (BANK == 0)
-        norFlashPageProgram((uint8_t *)(FW_UP_BANK1_ADDR + ota_handle.write_offset), ota_handle.Read_Buffer, lastDataLen);
-#elif (BANK == 1)
-        norFlashPageProgram(FW_UP_BANK0_ADDR + ota_handle.write_offset, ota_handle.Read_Buffer, FW_UP_PAGE_SIZE);
-#endif
+
+        uint32_t target_addr = BankDetection_GetBankAddress(ota_handle.target_bank);
+        norFlashPageProgram((uint8_t *)(target_addr + ota_handle.write_offset),
+                            ota_handle.Read_Buffer,
+                            lastDataLen);
         ota_handle.write_offset += lastDataLen;
 
         LOG_INFO("Last P:%ld%%\n", ota_handle.write_offset*100/ota_handle.current_header.header_len);
-        LOG_INFO("write flash finished!!!\n");
+        LOG_INFO("Write flash finished!!!\n");
     }
 
-    // after write flash, ready to do:
-    // 1. read flash check crc data
-    // 2. SII update, update firmware Revision Number
-    // 3. write boot bank params
+    // 升级完成: CRC校验 + 更新SII + 更新Boot Params
     if(ota_handle.write_offset >= ota_handle.current_header.header_len)
     {
-        // 1. read flash check crc data
-#if (BANK == 0)
-        volatile uint32_t *pCheckCrc = (UINT32 *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET);    // Identify section address
-#elif (BANK == 1)
-        volatile uint32_t *pCheckCrc = (UINT32 *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET);    // Identify section address
-#endif
+        // 1. CRC校验
+        uint32_t target_addr = BankDetection_GetBankAddress(ota_handle.target_bank);
+        volatile uint32_t *pCheckCrc = (UINT32 *)(target_addr - FW_UP_MIRROR_OFFSET);
 
         uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)pCheckCrc, (int)(ota_handle.current_header.header_len - 4));
-        //uint32_t crcCalRet = calculate_crc32((uint8_t*)pCheckCrc, ota_handle.current_header.header_len - 4, init_value, xor_out);
-        uint32_t crcFlashData = *((UINT32 *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET + ota_handle.current_header.header_len - 4));
+        uint32_t crcFlashData = *((UINT32 *)(target_addr - FW_UP_MIRROR_OFFSET + ota_handle.current_header.header_len - 4));
 
         if(crcCalRet != crcFlashData)
         {
-            LOG_DEBUG("crcCalRet=%lX, crcFlashData=%lX\n", crcCalRet, crcFlashData);
+            LOG_ERROR("CRC check failed! calc=0x%lX, flash=0x%lX\n", crcCalRet, crcFlashData);
             return FOE_ERROR;
         }
         else
         {
-            LOG_INFO("Flash crc check succeed!!!\n");
+            LOG_INFO("CRC check passed!\n");
         }
 
-        //--------------------------------------------------
-        // 2. SII update, update firmware Revision Number
-        //--------------------------------------------------
-        EEPBUFFER     Buffer;
-        for ( uint8_t i = 0; i < 4 ; i++)                                           // get new firmware identify
+        // 2. 更新SII (Slave Information Interface)
+        EEPBUFFER Buffer;
+        for (uint8_t i = 0; i < 4; i++)
         {
             Buffer.dword[i] = ota_handle.current_header.dword[i];
         }
         ESC_EepromAccess(SII_EEP_IDENTIFY_OFFSET + SII_EEP_REVESIONNO, 2, &Buffer.word[SII_EEP_REVESIONNO], ESC_WR);
+        LOG_INFO("SII updated: Revision=0x%04X\n", Buffer.word[SII_EEP_REVESIONNO]);
 
-        LOG_INFO("BL_DATA_STATUS_SII_UPDATE Buffer.word[SII_EEP_REVESIONNO]=%x\n",Buffer.word[SII_EEP_REVESIONNO]);
+        // 3. 更新Boot Params
+        sbl_boot_params_t sbl_boot_params;
+        memset(&sbl_boot_params, 0, sizeof(sbl_boot_params_t));
 
-        BL_SetRebootFlag(TRUE);                                             // yes. reboot is available.
+        // 填充Boot Params
+        memcpy(sbl_boot_params.header_app, "APP", 3);
+        sbl_boot_params.header_version = ota_handle.current_header.header_version;
+        sbl_boot_params.target_app = 1;  // APP1
+        sbl_boot_params.current_bank = ota_handle.target_bank;  // 下次启动的Bank
+        sbl_boot_params.target_bank = ota_handle.target_bank;
+        sbl_boot_params.version_check_enable = ota_handle.version_check_enabled ? 1 : 0;
+        sbl_boot_params.vendor_id = ota_handle.current_header.dword[0];
+        sbl_boot_params.product_code = ota_handle.current_header.dword[1];
+        sbl_boot_params.revision_number = ota_handle.current_header.dword[2];
+        sbl_boot_params.serial_number = ota_handle.current_header.dword[3];
 
+        // 计算并设置CRC
+        SblBootParams_UpdateCRC(&sbl_boot_params);
 
-        // 3. write boot bank params
-        R_XSPI_QSPI_Erase(&g_qspi0_ctrl, (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE),(uint32_t)FW_UP_BOOT_PARAMS_SIZE);
-
-        spi_flash_status_t status_erase;
-        do{
-            (void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-        } while (true == status_erase.write_in_progress);
-
-        uint8_t bootParams[FW_UP_WRITE_ATONCE_SIZE] = {0};
-        uint16_t idx = 0;
-        memcpy(bootParams + idx, ota_handle.current_header.header_app, HEADER_PARAMS_APP);
-        idx += HEADER_PARAMS_APP;
-
-        memcpy(bootParams + idx, ota_handle.current_header.byte, sizeof(g_identify));
-        idx += sizeof(g_identify);
-
-        uint32_t crcBootParams = CRC_Calculate(&ctx, (char*)bootParams, idx);
-        memcpy(bootParams + idx, (uint8_t*)&crcBootParams, sizeof(crcBootParams));
-        idx += sizeof(crcBootParams);
-
-        LOG_DEBUG("write boot Params:");
-        for(uint8_t i = 0; i < idx; i++)
+        // 写入Boot Params
+        if (!SblBootParams_Write(&sbl_boot_params))
         {
-            LOG_DEBUG("%02X", bootParams[i]);
-        }LOG_DEBUG("\n");
+            LOG_ERROR("Failed to write Boot Params!\n");
+            return FOE_ERROR;
+        }
 
-        R_XSPI_QSPI_Write(&g_qspi0_ctrl, bootParams,
-                (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE),
-                                          (uint32_t)FW_UP_WRITE_ATONCE_SIZE);
-        do{
-            (void) R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-        } while (true == status_erase.write_in_progress);
+        LOG_INFO("Boot Params updated: Bank=%d, Version=0x%08X\n",
+                 sbl_boot_params.current_bank, sbl_boot_params.header_version);
 
-        memset(bootParams, 0, sizeof(bootParams));
-        memcpy(bootParams, (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET - FW_UP_BOOT_PARAMS_SIZE), sizeof(bootParams));
-        LOG_DEBUG("read  boot Params:");
-        for(uint8_t i = 0; i < idx; i++)
-        {
-            LOG_DEBUG("%02X", bootParams[i]);
-        }LOG_DEBUG("\n");
+        // 4. 设置重启标志
+        BL_SetRebootFlag(TRUE);
 
-        uint32_t readCrc = *(uint32_t*)(bootParams + idx - 4);
-        crcBootParams = CRC_Calculate(&ctx, (char*)bootParams, idx - 4);
-        LOG_DEBUG("read crc:%lX\n cal crc=%lX\n", readCrc, crcBootParams);
-
-        //todo
-        //如果crc不一致，则把boot bank params恢复到当前bank数值，升级失败回滚到当前bank
-
-
-        // end
-        endTime =  getGlobalCounter();
-        LOG_INFO("ECAT FOE Total Time:%ldms!!!\n\n", (uint32_t)(endTime - beginTime)/BSP_GLOBAL_SYSTEM_COUNTER_CLOCK_HZ*1000);
+        // 5. 记录升级时间
+        endTime = getGlobalCounter();
+        LOG_INFO("Upgrade completed! Time: %ldms\n",
+                 (uint32_t)(endTime - beginTime)/BSP_GLOBAL_SYSTEM_COUNTER_CLOCK_HZ*1000);
 
         return 0;
     }
 
-
-
     ota_handle.recv_offset += Size;
-    //ota_handle.current_crc = calculate_crc32((uint8_t*)pData, Size, init_value, xor_out);
-
     return(ErrorCode);
 }
 
@@ -854,4 +430,4 @@ void BL_Reboot(void)
     };
 }
 
-#endif
+

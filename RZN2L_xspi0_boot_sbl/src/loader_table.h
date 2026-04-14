@@ -31,4 +31,7 @@ typedef struct {
     uint32_t * dst;
     uint32_t size;
     uint32_t enable_flag;
+    uint8_t app_id;         // APP ID: 1-5
+    uint8_t bank_id;        // Bank ID: 0=Bank0, 1=Bank1, 0xFF=Invalid
+    uint8_t reserved[2];    // Reserved for alignment
 } loader_table;

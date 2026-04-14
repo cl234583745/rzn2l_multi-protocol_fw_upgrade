@@ -223,8 +223,7 @@ V4.00 ECAT 7: The return values for the AL-StatusCode were changed to UINT16
 #include "cia402appl.h"
 #include "sampleappl.h"
 
-/* Access to Firmware updata API */
-#include "r_fw_up_rz_if.h"
+
 
 /*--------------------------------------------------------------------------------------
 ------

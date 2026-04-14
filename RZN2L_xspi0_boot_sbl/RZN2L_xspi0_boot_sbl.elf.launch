@@ -35,6 +35,7 @@
     <booleanAttribute key="com.renesas.cdt.launch.dsf.USE_DEFAULT_IO_MAP" value="true"/>
     <listAttribute key="com.renesas.cdt.launch.dsf.downloadImages">
         <listEntry value="|true|true|true||true|No core|INTERNAL_MEMORY||false"/>
+        <listEntry value="${workspace_loc:\RZN2L_xspi0_app1\Debug\RZN2L_xspi0_app1.elf}|true|true|true||true|No core|INTERNAL_MEMORY||false"/>
     </listAttribute>
     <booleanAttribute key="com.renesas.cdt.launch.dsf.downloadImagesUpgradedV30" value="true"/>
     <listAttribute key="com.renesas.cdt.launch.dsf.externalFlashDestinationAddresses"/>

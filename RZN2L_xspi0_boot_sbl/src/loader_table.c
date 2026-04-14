@@ -47,13 +47,13 @@ extern uint32_t APP1_BANK1_IMAGE_APP_FLASH_section_size;
  * FLASH_CONTENTS_ADDRESS     = IDENTIFY_PARAM_ADDRESS + 0x00000010;
 */
 
-#define app1_bank0_prg_flash_addr ((uint32_t)&APP1_BANK0_IMAGE_APP_FLASH_section_start + app1_bank0_offset)
+#define app1_bank0_prg_flash_addr ((uint32_t)&APP1_BANK0_IMAGE_APP_FLASH_section_start + APP1_FW_OFFSET_HEADER)
 //#define app1_bank0_prg_flash_addr ((uint32_t*)((uint8_t*)&APP1_BANK0_IMAGE_APP_FLASH_section_start + app1_bank0_offset))
 #define app1_bank0_prg_start_addr (&APP1_BANK0_IMAGE_APP_RAM_start)
 #define app1_bank0_prg_size       (&APP1_BANK0_IMAGE_APP_FLASH_section_size)
 
 
-#define app1_bank1_prg_flash_addr ((uint32_t)&APP1_BANK1_IMAGE_APP_FLASH_section_start + app1_bank1_offset)
+#define app1_bank1_prg_flash_addr ((uint32_t)&APP1_BANK1_IMAGE_APP_FLASH_section_start + APP1_FW_OFFSET_HEADER)
 //#define app1_bank1_prg_flash_addr ((uint32_t*)((uint8_t*)&APP1_BANK1_IMAGE_APP_FLASH_section_start + app1_bank1_offset))
 #define app1_bank1_prg_start_addr (&APP1_BANK1_IMAGE_APP_RAM_start)
 #define app1_bank1_prg_size       (&APP1_BANK1_IMAGE_APP_FLASH_section_size)
@@ -61,7 +61,7 @@ extern uint32_t APP1_BANK1_IMAGE_APP_FLASH_section_size;
 
 #endif
 /*
- * table = { Src, Dst, Size, Enable flag(enable:1 disable:0) }
+ * table = { Src, Dst, Size, Enable flag(enable:1 disable:0), app_id, bank_id, reserved }
  * table0: Load Application program to System SRAM from flash memory
  * table1: Disable table
  * table2: Disable table
@@ -69,8 +69,8 @@ extern uint32_t APP1_BANK1_IMAGE_APP_FLASH_section_size;
  */
 const loader_table table[TABLE_ENTRY_NUM] BSP_PLACE_IN_SECTION("CPU0_LOADER_TABLE") =
 {
-  { (uint32_t *)app1_bank0_prg_flash_addr, (uint32_t *)app1_bank0_prg_start_addr, (uint32_t)app1_bank0_prg_size, (uint32_t)TABLE_ENABLE },
-  { (uint32_t *)app1_bank1_prg_flash_addr, (uint32_t *)app1_bank1_prg_start_addr, (uint32_t)app1_bank1_prg_size, (uint32_t)TABLE_DISABLE },
-  { (uint32_t *)TABLE_INVALID_VALUE, (uint32_t *)TABLE_INVALID_VALUE, (uint32_t)TABLE_INVALID_VALUE, (uint32_t)TABLE_DISABLE },
-  { (uint32_t *)TABLE_INVALID_VALUE, (uint32_t *)TABLE_INVALID_VALUE, (uint32_t)TABLE_INVALID_VALUE, (uint32_t)TABLE_DISABLE }
+  { (uint32_t *)app1_bank0_prg_flash_addr, (uint32_t *)app1_bank0_prg_start_addr, (uint32_t)app1_bank0_prg_size, (uint32_t)TABLE_ENABLE, 1, 0, {0, 0} },
+  { (uint32_t *)app1_bank1_prg_flash_addr, (uint32_t *)app1_bank1_prg_start_addr, (uint32_t)app1_bank1_prg_size, (uint32_t)TABLE_ENABLE, 1, 1, {0, 0} },
+  { (uint32_t *)TABLE_INVALID_VALUE, (uint32_t *)TABLE_INVALID_VALUE, (uint32_t)TABLE_INVALID_VALUE, (uint32_t)TABLE_DISABLE, 0xFF, 0xFF, {0, 0} },
+  { (uint32_t *)TABLE_INVALID_VALUE, (uint32_t *)TABLE_INVALID_VALUE, (uint32_t)TABLE_INVALID_VALUE, (uint32_t)TABLE_DISABLE, 0xFF, 0xFF, {0, 0} }
 };

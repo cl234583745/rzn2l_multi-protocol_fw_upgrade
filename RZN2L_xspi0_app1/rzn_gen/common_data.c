@@ -23,7 +23,7 @@ const timer_instance_t g_timer0 =
 ether_selector_instance_ctrl_t g_ether_selector1_ctrl;
 
 const ether_selector_cfg_t g_ether_selector1_cfg =
-{ .channel = 1, .phylink = ETHER_SELECTOR_PHYLINK_POLARITY_LOW, .interface = ETHER_SELECTOR_INTERFACE_MII, .speed =
+{ .channel = 1, .phylink = ETHER_SELECTOR_PHYLINK_POLARITY_LOW, .interface = ETHER_SELECTOR_INTERFACE_RGMII, .speed =
           ETHER_SELECTOR_SPEED_100_MBPS,
   .duplex = ETHER_SELECTOR_DUPLEX_FULL, .ref_clock = ETHER_SELECTOR_REF_CLOCK_INPUT, .p_extend = NULL, };
 
@@ -47,8 +47,8 @@ const ether_phy_cfg_t g_ether_phy1_cfg =
 {
 
 .channel = 1,
-  .phy_lsi_address = 2, .phy_reset_wait_time = 0x00020000, .mii_bit_access_wait_time = 0,                      // Unused
-  .phy_lsi_type = ETHER_PHY_LSI_TYPE_KSZ8081, .flow_control = ETHER_PHY_FLOW_CONTROL_DISABLE, .mii_type =
+  .phy_lsi_address = 1, .phy_reset_wait_time = 0x00020000, .mii_bit_access_wait_time = 0,                      // Unused
+  .phy_lsi_type = ETHER_PHY_LSI_TYPE_KIT_COMPONENT, .flow_control = ETHER_PHY_FLOW_CONTROL_DISABLE, .mii_type =
           (ether_phy_mii_type_t) 0,  // Unused
   .p_context = NULL, .p_extend = &g_ether_phy1_extend };
 
@@ -58,7 +58,7 @@ const ether_phy_instance_t g_ether_phy1 =
 ether_selector_instance_ctrl_t g_ether_selector0_ctrl;
 
 const ether_selector_cfg_t g_ether_selector0_cfg =
-{ .channel = 0, .phylink = ETHER_SELECTOR_PHYLINK_POLARITY_LOW, .interface = ETHER_SELECTOR_INTERFACE_MII, .speed =
+{ .channel = 0, .phylink = ETHER_SELECTOR_PHYLINK_POLARITY_LOW, .interface = ETHER_SELECTOR_INTERFACE_RGMII, .speed =
           ETHER_SELECTOR_SPEED_100_MBPS,
   .duplex = ETHER_SELECTOR_DUPLEX_FULL, .ref_clock = ETHER_SELECTOR_REF_CLOCK_INPUT, .p_extend = NULL, };
 
@@ -82,8 +82,8 @@ const ether_phy_cfg_t g_ether_phy0_cfg =
 {
 
 .channel = 0,
-  .phy_lsi_address = 1, .phy_reset_wait_time = 0x00020000, .mii_bit_access_wait_time = 0,                      // Unused
-  .phy_lsi_type = ETHER_PHY_LSI_TYPE_KSZ8081, .flow_control = ETHER_PHY_FLOW_CONTROL_DISABLE, .mii_type =
+  .phy_lsi_address = 0, .phy_reset_wait_time = 0x00020000, .mii_bit_access_wait_time = 0,                      // Unused
+  .phy_lsi_type = ETHER_PHY_LSI_TYPE_KIT_COMPONENT, .flow_control = ETHER_PHY_FLOW_CONTROL_DISABLE, .mii_type =
           (ether_phy_mii_type_t) 0,  // Unused
   .p_context = NULL, .p_extend = &g_ether_phy0_extend };
 

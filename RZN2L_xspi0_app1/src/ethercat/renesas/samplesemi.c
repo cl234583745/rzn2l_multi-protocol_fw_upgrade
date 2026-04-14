@@ -19,7 +19,7 @@
 #include "ecatslv.h"
 #include "samplefoe.h"
 #include "bootmode.h"
-#include "r_fw_up_buf.h"
+
 #include <stdio.h>
 
 /*-----------------------------------------------------------------------------------------

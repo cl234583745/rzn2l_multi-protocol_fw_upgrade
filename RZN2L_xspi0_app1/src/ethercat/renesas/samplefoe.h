@@ -21,7 +21,7 @@
 ------
 -----------------------------------------------------------------------------------------*/
 #include "ecat_def.h"
-#include "r_fw_up_rz_if.h"
+
 
 #ifndef _SAMPLE_FOE_H_
 #define _SAMPLE_FOE_H_
