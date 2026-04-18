@@ -9,29 +9,36 @@
  * copyright laws. Renesas reserves the right to change or discontinue this software and/or this documentation.
  * THE SOFTWARE AND DOCUMENTATION IS DELIVERED TO YOU "AS IS," AND RENESAS MAKES NO REPRESENTATIONS OR WARRANTIES, AND
  * TO THE FULLEST EXTENT PERMISSIBLE UNDER APPLICABLE LAW, DISCLAIMS ALL WARRANTIES, WHETHER EXPLICITLY OR IMPLICITLY,
- * INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT, WITH RESPECT TO THE
- * SOFTWARE OR DOCUMENTATION.  RENESAS SHALL HAVE NO LIABILITY ARISING OUT OF ANY SECURITY VULNERABILITY OR BREACH.
+ * INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT, WITH RESPECT TO
+ * THE SOFTWARE OR DOCUMENTATION.  RENESAS SHALL HAVE NO LIABILITY ARISING OUT OF ANY SECURITY VULNERABILITY OR BREACH.
  * TO THE MAXIMUM EXTENT PERMITTED BY LAW, IN NO EVENT WILL RENESAS BE LIABLE TO YOU IN CONNECTION WITH THE SOFTWARE OR
- * DOCUMENTATION (OR ANY PERSON OR ENTITY CLAIMING RIGHTS DERIVED FROM YOU) FOR ANY LOSS, DAMAGES, OR CLAIMS WHATSOEVER,
+ * THE DOCUMENTATION (OR ANY PERSON OR ENTITY CLAIMING RIGHTS DERIVED FROM YOU) FOR ANY LOSS, DAMAGES, OR CLAIMS WHATSOEVER,
  * INCLUDING, WITHOUT LIMITATION, ANY DIRECT, CONSEQUENTIAL, SPECIAL, INDIRECT, PUNITIVE, OR INCIDENTAL DAMAGES; ANY
  * LOST PROFITS, OTHER ECONOMIC DAMAGE, PROPERTY DAMAGE, OR PERSONAL INJURY; AND EVEN IF RENESAS HAS BEEN ADVISED OF THE
  * POSSIBILITY OF SUCH LOSS, DAMAGES, CLAIMS OR COSTS.
  **********************************************************************************************************************/
+#ifndef LOADER_TABLE_H_
+#define LOADER_TABLE_H_
+
 #include "bsp_api.h"
 
-/* Value for table */
+
+
+/* Value for loader_table */
 #define TABLE_ENTRY_NUM                  (4)
 #define TABLE_ENABLE                     (1)
 #define TABLE_DISABLE                    (0)
 #define TABLE_INVALID_VALUE              (0xffffffff)
 
-/* loader_table definition */
+/* loader_table_t definition */
 typedef struct {
-    uint32_t * src;
-    uint32_t * dst;
-    uint32_t size;
-    uint32_t enable_flag;
-    uint8_t app_id;         // APP ID: 1-5
-    uint8_t bank_id;        // Bank ID: 0=Bank0, 1=Bank1, 0xFF=Invalid
-    uint8_t reserved[2];    // Reserved for alignment
-} loader_table;
+    uint32_t * src;           // Flash源地址
+    uint32_t * dst;           // RAM目标地址
+    uint32_t size;            // 大小
+    uint32_t enable_flag;     // 启用标志
+    uint8_t app_id;           // APP ID: 1-5
+    uint8_t bank_id;          // Bank ID: 0=Bank0, 1=Bank1, 0xFF=Invalid
+    uint8_t reserved[2];       // 保留对齐
+} loader_table_t;
+
+#endif /* LOADER_TABLE_H_ */

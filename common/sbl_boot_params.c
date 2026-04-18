@@ -83,10 +83,9 @@ bool SblBootParams_Read(sbl_boot_params_t *params)
     if (params == NULL)
         return false;
 
-    // 主区域地址: Bank0 前面 4KB
-    #define MAIN_PARAMS_ADDR   (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE)
-    // 备份区域地址: Bank0 前面 8KB (主区域前面)
-    #define BACKUP_PARAMS_ADDR (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE - FW_UP_BOOT_PARAMS_BACKUP_SIZE)
+    // 使用flash_config.h中定义的地址
+    #define MAIN_PARAMS_ADDR   SBL_MAIN_PARAMS_ADDR
+    #define BACKUP_PARAMS_ADDR SBL_BACKUP_PARAMS_ADDR
 
     // 1. 先读取主区域
     memcpy(params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
@@ -129,10 +128,9 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
     spi_flash_status_t status_erase;
 
-    // 主区域地址: Bank0 前面 4KB
-    #define MAIN_PARAMS_ADDR   (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE)
-    // 备份区域地址: Bank0 前面 8KB (主区域前面)
-    #define BACKUP_PARAMS_ADDR (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE - FW_UP_BOOT_PARAMS_BACKUP_SIZE)
+    // 使用flash_config.h中定义的地址
+    #define MAIN_PARAMS_ADDR   SBL_MAIN_PARAMS_ADDR
+    #define BACKUP_PARAMS_ADDR SBL_BACKUP_PARAMS_ADDR
 
     // 1. 先读取现有 Boot Params (用于失败恢复)
     sbl_boot_params_t old_params;

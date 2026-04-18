@@ -38,7 +38,7 @@ void Progress_Update(uint32_t current_size)
 
     g_last_percent = percent;
 
-    uint8_t bar_len = (percent * PROGRESS_BAR_LENGTH) / 100;
+    uint8_t bar_len = (uint8_t)((percent * PROGRESS_BAR_LENGTH) / 100);
     uint8_t empty_len = PROGRESS_BAR_LENGTH - bar_len;
 
     LOG_RAW("\r[");
@@ -77,7 +77,7 @@ void Progress_Print(uint32_t current, uint32_t total)
 
     g_last_percent = percent;
 
-    uint8_t bar_len = (percent * PROGRESS_BAR_LENGTH) / 100;
+    uint8_t bar_len = (uint8_t)((percent * PROGRESS_BAR_LENGTH) / 100);
     uint8_t empty_len = PROGRESS_BAR_LENGTH - bar_len;
 
     LOG_RAW("\r[");

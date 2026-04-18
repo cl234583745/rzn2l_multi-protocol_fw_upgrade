@@ -8,10 +8,27 @@
 #ifndef COMMON_LOG_H_
 #define COMMON_LOG_H_
 
+#pragma GCC system_header   //把 log.h 标记为系统头，GCC 会抑制其中的格式警告，一处修复全局生效。
+
 #ifndef LOG_H
 #define LOG_H
 
 #include <stdio.h>
+#include <stdint.h>
+#include <stdarg.h>
+
+#ifndef LOG_PRINTF
+static inline int log_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static inline int log_printf(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    int ret = vprintf(fmt, args);
+    va_end(args);
+    return ret;
+}
+#define LOG_PRINTF log_printf
+#endif
 
 // ---------- 日志级别定义 ----------
 #define LOG_LEVEL_NONE  0
@@ -40,38 +57,38 @@
 // 只有同时满足【全局允许】且【当前文件允许】才输出
 
 #if GLOBAL_GE(LOG_LEVEL_ERROR) && LOCAL_GE(LOG_LEVEL_ERROR)
-    #define LOG_ERROR(...) printf("[ERROR] " __VA_ARGS__ )
+    #define LOG_ERROR(...) LOG_PRINTF("[ERROR] " __VA_ARGS__ )
 #else
     #define LOG_ERROR(...) ((void)0)
 #endif
 
 #if GLOBAL_GE(LOG_LEVEL_WARN) && LOCAL_GE(LOG_LEVEL_WARN)
-    #define LOG_WARN(...)  printf("[WARN] "  __VA_ARGS__ )
+    #define LOG_WARN(...)  LOG_PRINTF("[WARN] "  __VA_ARGS__ )
 #else
     #define LOG_WARN(...)  ((void)0)
 #endif
 
 #if GLOBAL_GE(LOG_LEVEL_INFO) && LOCAL_GE(LOG_LEVEL_INFO)
-    #define LOG_INFO(...)  printf("[INFO] "  __VA_ARGS__ )
+    #define LOG_INFO(...)  LOG_PRINTF("[INFO] "  __VA_ARGS__ )
 #else
     #define LOG_INFO(...)  ((void)0)
 #endif
 
 #if GLOBAL_GE(LOG_LEVEL_DEBUG) && LOCAL_GE(LOG_LEVEL_DEBUG)
-    #define LOG_DEBUG(...) printf("[DEBUG] " __VA_ARGS__ )
+    #define LOG_DEBUG(...) LOG_PRINTF("[DEBUG] " __VA_ARGS__ )
 #else
     #define LOG_DEBUG(...) ((void)0)
 #endif
 
 #if GLOBAL_GE(LOG_LEVEL_TRACE) && LOCAL_GE(LOG_LEVEL_TRACE)
-    #define LOG_TRACE(...) printf("[TRACE] " __VA_ARGS__ )
+    #define LOG_TRACE(...) LOG_PRINTF("[TRACE] " __VA_ARGS__ )
 #else
     #define LOG_TRACE(...) ((void)0)
 #endif
 
 // 无前缀纯输出 - 用于进度条等需要精确格式的场景
 #if GLOBAL_GE(LOG_LEVEL_INFO)
-    #define LOG_RAW(...)  printf(__VA_ARGS__ )
+    #define LOG_RAW(...)  LOG_PRINTF(__VA_ARGS__ )
 #else
     #define LOG_RAW(...)  ((void)0)
 #endif

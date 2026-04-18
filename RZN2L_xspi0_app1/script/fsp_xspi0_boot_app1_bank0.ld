@@ -3,6 +3,7 @@
 */
 
 INCLUDE memory_regions.ld
+INCLUDE ../../common/flash_layout.ld
 
 /* The memory information for each device is done in memory regions file.
  * The starting address and length of memory not defined in memory regions file are defined as 0. */
@@ -48,22 +49,6 @@ CS3_SPACE_PRV_LENGTH = DEFINED(CS3_SPACE_LENGTH) ? CS3_SPACE_LENGTH : 0;
 CS5_SPACE_PRV_START = DEFINED(CS5_SPACE_START) ? CS5_SPACE_START : 0;
 CS5_SPACE_PRV_LENGTH = DEFINED(CS5_SPACE_LENGTH) ? CS5_SPACE_LENGTH : 0;
 
-/* Added and Changed ADDRESS for EtherCAT sample ******************/
-BANK0_START_ADDRESS 	   = 0x60100000;
-BANK1_START_ADDRESS 	   = 0x60200000;
-/* bank0 */
-HEADER_PARAM_ADDRESS     = BANK0_START_ADDRESS;
-/* .identify */
-IDENTIFY_PARAM_ADDRESS    = HEADER_PARAM_ADDRESS + 0x0000004C;
-FLASH_CONTENTS_ADDRESS     = IDENTIFY_PARAM_ADDRESS + 0x00000010;
-
-/*******************************************************************/
-
-/*LOADER_PARAM_ADDRESS       = xSPI0_CS0_SPACE_PRV_START;
-FLASH_CONTENTS_ADDRESS     = LOADER_PARAM_ADDRESS + 0x0000004C;
-LOADER_TEXT_ADDRESS        = 0x00102000;
-INTVEC_ADDRESS             = 0x00000000;
-TEXT_ADDRESS               = 0x00000100;*/
 NONCACHE_BUFFER_OFFSET     = 0x00020000;
 DMAC_LINK_MODE_OFFSET      = 0x00044000;
 DATA_NONCACHE_OFFSET       = 0x00048000;
@@ -115,15 +100,16 @@ MEMORY
 
 SECTIONS
 {
-	.header_param HEADER_PARAM_ADDRESS : AT (HEADER_PARAM_ADDRESS)
+/* Flash layout imported from flash_layout.ld */
+	.header_param APP1_HEADER_PARAM_ADDR : AT (APP1_HEADER_PARAM_ADDR)
     {
         KEEP(*(.header))
     } > xSPI0_CS0_SPACE
-	.identify_param IDENTIFY_PARAM_ADDRESS : AT (IDENTIFY_PARAM_ADDRESS)
+	.identify_param APP1_IDENTIFY_PARAM_ADDR : AT (APP1_IDENTIFY_PARAM_ADDR)
     {
         KEEP(*(.identify))
     } > xSPI0_CS0_SPACE
-    .flash_contents FLASH_CONTENTS_ADDRESS : AT (FLASH_CONTENTS_ADDRESS)
+    .flash_contents APP1_CODE_ADDR : AT (APP1_CODE_ADDR)
     {
         _mtext = .;
         . = . + (_text_end - _text_start);
@@ -133,6 +119,9 @@ SECTIONS
         . = . + (_data_noncache_end - _data_noncache_start);
         flash_contents_end = .;
     } > xSPI0_CS0_SPACE
+    
+    
+    
     .text 0x10010000 : AT (_mtext)
     {
         _text_start = .;

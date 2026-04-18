@@ -362,7 +362,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
 
         if(crcCalRet != crc_flash)
         {
-            LOG_ERROR("CRC check failed! calc=0x%lX, flash=0x%lX\n", crcCalRet, crcFlashData);
+            LOG_ERROR("CRC check failed! calc=0x%lX, flash=0x%lX\n", crcCalRet, crc_flash);
             return FOE_ERROR;
         }
         else

@@ -3,6 +3,7 @@
 */
 
 INCLUDE memory_regions.ld
+INCLUDE ../../common/flash_layout.ld
 
 /* The memory information for each device is done in memory regions file.
  * The starting address and length of memory not defined in memory regions file are defined as 0. */
@@ -48,8 +49,6 @@ CS3_SPACE_PRV_LENGTH = DEFINED(CS3_SPACE_LENGTH) ? CS3_SPACE_LENGTH : 0;
 CS5_SPACE_PRV_START = DEFINED(CS5_SPACE_START) ? CS5_SPACE_START : 0;
 CS5_SPACE_PRV_LENGTH = DEFINED(CS5_SPACE_LENGTH) ? CS5_SPACE_LENGTH : 0;
 
-LOADER_PARAM_ADDRESS       = xSPI0_CS0_SPACE_PRV_START;
-FLASH_CONTENTS_ADDRESS     = LOADER_PARAM_ADDRESS + 0x0000004C;
 LOADER_TEXT_ADDRESS        = 0x00102000;
 INTVEC_ADDRESS             = 0x00000000;
 TEXT_ADDRESS               = 0x00000100;
@@ -115,7 +114,7 @@ SECTIONS
         KEEP(*(APP1_BANK1_IMAGE_RAM))
     }
     
-    .APP1_BANK0_IMAGE_APP_FLASH_section 0x60100000 : AT (0x60100000)
+    .APP1_BANK0_IMAGE_APP_FLASH_section APP1_BANK0_ADDR : AT (APP1_BANK0_ADDR)
     {
         APP1_BANK0_IMAGE_APP_FLASH_section_start = .;
         KEEP(./src/APP1_BANK0_Flash_section.o(.APP1_BANK0_IMAGE_APP_FLASH_section))
@@ -123,7 +122,7 @@ SECTIONS
     }
     APP1_BANK0_IMAGE_APP_FLASH_section_size = SIZEOF(.APP1_BANK0_IMAGE_APP_FLASH_section);
     
-    .APP1_BANK1_IMAGE_APP_FLASH_section 0x60200000 : AT (0x60200000)
+    .APP1_BANK1_IMAGE_APP_FLASH_section APP1_BANK1_ADDR : AT (APP1_BANK1_ADDR)
     {
         APP1_BANK1_IMAGE_APP_FLASH_section_start = .;
         KEEP(./src/APP1_BANK1_Flash_section.o(.APP1_BANK1_IMAGE_APP_FLASH_section))
@@ -134,7 +133,9 @@ SECTIONS
    
     .loader_param LOADER_PARAM_ADDRESS : AT (LOADER_PARAM_ADDRESS)
     {
+        LOADER_PARAM_start = .;
         KEEP(*(.loader_param))
+        LOADER_PARAM_end = .;
     } > xSPI0_CS0_SPACE
     .flash_contents FLASH_CONTENTS_ADDRESS : AT (FLASH_CONTENTS_ADDRESS)
     {
@@ -148,10 +149,26 @@ SECTIONS
         . = . + (_data_noncache_end - _data_noncache_start);
         flash_contents_end = .;
     } > xSPI0_CS0_SPACE
-    .cpu0_loader_table 0x60080000 : AT (0x60080000)
+    .cpu0_loader_table SBL_LOADER_TABLE_ADDR : AT (SBL_LOADER_TABLE_ADDR)
     {
+        SBL_LOADER_TABLE_start = .;
         KEEP(*(CPU0_LOADER_TABLE))
+        SBL_LOADER_TABLE_end = .;        
     } > xSPI0_CS0_SPACE
+    .sbl_boot_params_backup SBL_BOOT_PARAMS_BACKUP_ADDR : AT (SBL_BOOT_PARAMS_BACKUP_ADDR)
+    {
+        SBL_BOOT_PARAMS_BACKUP_start = .;
+        KEEP(*(.sbl_boot_params_backup))
+        SBL_BOOT_PARAMS_BACKUP_end = .; 
+    } > xSPI0_CS0_SPACE
+    .sbl_boot_params SBL_BOOT_PARAMS_ADDR : AT (SBL_BOOT_PARAMS_ADDR)
+    {
+        SBL_BOOT_PARAMS_start = .;
+        KEEP(*(.sbl_boot_params))
+        SBL_BOOT_PARAMS_end = .;
+    } > xSPI0_CS0_SPACE
+
+
     .text LOADER_TEXT_ADDRESS : AT (_mtext)
     {
         _text_start = .;

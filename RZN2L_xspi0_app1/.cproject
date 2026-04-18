@@ -73,6 +73,7 @@
 									<listOptionValue builtIn="false" value="ETHERCAT_SSC_PORT_GMAC_MDIO_SUPPORT=1"/>
 									<listOptionValue builtIn="false" value="xFW_PARSE_SREC"/>
 									<listOptionValue builtIn="false" value="APP1_BANK=1"/>
+									<listOptionValue builtIn="false" value="APP1_ENABLE=1"/>
 								</option>
 								<option IS_BUILTIN_EMPTY="false" IS_VALUE_EMPTY="false" id="com.renesas.cdt.managedbuild.gcc.rz.option.assembler.include.1452417808" name="Include paths (-I)" superClass="com.renesas.cdt.managedbuild.gcc.rz.option.assembler.include" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/rzn_gen}&quot;"/>
@@ -128,7 +129,7 @@
 									<listOptionValue builtIn="false" value="REVISION_NUMBER=0x00000300"/>
 									<listOptionValue builtIn="false" value="ETHERCAT_SSC_PORT_GMAC_MDIO_SUPPORT=1"/>
 									<listOptionValue builtIn="false" value="xFW_PARSE_SREC"/>
-									<listOptionValue builtIn="false" value="APP1_BANK=0"/>
+									<listOptionValue builtIn="false" value="APP1_ENABLE=1"/>
 								</option>
 								<inputType id="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input.1055574428" superClass="ilg.gnuarmeclipse.managedbuild.cross.tool.c.compiler.input"/>
 							</tool>

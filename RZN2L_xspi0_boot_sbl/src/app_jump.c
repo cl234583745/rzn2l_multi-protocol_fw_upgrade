@@ -125,7 +125,7 @@ app_jump_result_t AppJump_ToApp(uint8_t app_id, uint8_t bank_id)
         return APP_JUMP_FAIL_INVALID_BANK;
     }
 
-    // 选择Loader Table条目
+    // 选择Loader loader_table条目
     if (!LoaderTableManager_SelectEntry(app_id, bank_id))
     {
         return APP_JUMP_FAIL_LOAD_ERROR;
@@ -146,7 +146,7 @@ app_jump_result_t AppJump_ToApp(uint8_t app_id, uint8_t bank_id)
 
     // 注意: Flash源地址已经在loader_table中包含了APP1_FW_OFFSET_HEADER偏移量
     // SRAM目标地址不需要偏移，直接使用即可
-    //jump_info.src_addr += APP1_FW_OFFSET_HEADER;
+    jump_info.src_addr += APP1_FW_OFFSET_HEADER;
 
     // 复制APP从Flash到SRAM
     LOG_INFO("Copying APP%d Bank%d from Flash to SRAM...\n", app_id, bank_id);

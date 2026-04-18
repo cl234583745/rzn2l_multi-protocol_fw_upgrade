@@ -22,7 +22,7 @@ BSP_PLACE_IN_SECTION(".warm_start");
 FSP_CPP_FOOTER
 
 extern void bsp_copy_multibyte(uintptr_t * src, uintptr_t * dst, uintptr_t bytesize);
-extern const loader_table table[TABLE_ENTRY_NUM];
+extern const loader_table_t loader_table[TABLE_ENTRY_NUM];
 volatile bool uartTxCompleteFlg = 0;
 CRC_Context ctx;
 
@@ -153,7 +153,7 @@ void hal_entry(void)
     SblBootParams_Init();           // SBL Boot Params 初始化
     AppConfig_Init();               // APP 配置管理初始化
     BankConfig_Init();              // Bank 配置管理初始化
-    LoaderTableManager_Init();      // Loader Table 管理初始化
+    LoaderTableManager_Init();      // Loader loader_table 管理初始化
     AppJump_Init();                 // APP 跳转模块初始化
     sblCheckBootParams();           // 检查 Boot Params
 

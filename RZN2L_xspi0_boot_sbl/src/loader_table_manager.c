@@ -9,7 +9,7 @@
 #include "app_config.h"
 #include "log.h"
 
-// 定义loader_table结构 (与loader_table.h中一致)
+// 定义loader_table_t结构 (与loader_table.h中一致)
 typedef struct {
     uint32_t * src;
     uint32_t * dst;
@@ -18,10 +18,10 @@ typedef struct {
     uint8_t app_id;
     uint8_t bank_id;
     uint8_t reserved[2];
-} loader_table;
+} loader_table_t;
 
 // 引用外部Loader Table
-extern const loader_table table[];
+extern const loader_table_t loader_table[];
 #define TABLE_ENTRY_NUM 4
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_INFO
@@ -48,14 +48,14 @@ bool LoaderTableManager_GetEntry(uint8_t app_id, uint8_t bank_id, loader_table_e
     // 遍历Loader Table查找匹配的条目
     for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
     {
-        if (table[i].app_id == app_id && table[i].bank_id == bank_id)
+        if (loader_table[i].app_id == app_id && loader_table[i].bank_id == bank_id)
         {
-            entry->app_id = table[i].app_id;
-            entry->bank_id = table[i].bank_id;
-            entry->src_addr = (uint32_t)table[i].src;
-            entry->dst_addr = (uint32_t)table[i].dst;
-            entry->size = table[i].size;
-            entry->is_enabled = (table[i].enable_flag == 1);
+            entry->app_id = loader_table[i].app_id;
+            entry->bank_id = loader_table[i].bank_id;
+            entry->src_addr = (uint32_t)loader_table[i].src;
+            entry->dst_addr = (uint32_t)loader_table[i].dst;
+            entry->size = loader_table[i].size;
+            entry->is_enabled = (loader_table[i].enable_flag == 1);
             return true;
         }
     }
@@ -129,7 +129,7 @@ uint8_t LoaderTableManager_GetEnabledCount(void)
 
     for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
     {
-        if (table[i].enable_flag == 1)
+        if (loader_table[i].enable_flag == 1)
         {
             count++;
         }
@@ -172,8 +172,8 @@ void LoaderTableManager_PrintInfo(void)
     {
         LOG_INFO("  Entry[%d]: APP%d Bank%d, %s\n",
                  i,
-                 table[i].app_id,
-                 table[i].bank_id,
-                 table[i].enable_flag ? "Enabled" : "Disabled");
+                 loader_table[i].app_id,
+                 loader_table[i].bank_id,
+                 loader_table[i].enable_flag ? "Enabled" : "Disabled");
     }
 }
