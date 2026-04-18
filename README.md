@@ -186,132 +186,80 @@ typedef struct {
 } sbl_boot_params_t;
 ```
 
-## 4. SBL启动到APP1 FoE完整流程图
+## 4. 启动与升级流程
 
 ```mermaid
-flowchart TB
-    subgraph BootROM["【阶段1】Boot ROM (芯片内置)"]
-        BR1["上电复位"]
-        BR2["读取Loader Params<br/>(0x60000000)"]
-        BR3["从Flash加载SBL<br/>到BTCM (0x20000000)"]
-        BR4["跳转到SBL入口"]
+graph TB
+    subgraph SBL启动
+        START["上电"] --> INIT["SblBootParams_Init"]
+        INIT --> CHECK_MAIN["检查主区CRC"]
+        CHECK_MAIN -->|有效| OK1
+        CHECK_MAIN -->|无效| READ_BK["读备份区"]
+        READ_BK --> CHECK_BK["检查备份区CRC"]
+        CHECK_BK -->|无效| DEFAULT["初始化默认值"]
+        CHECK_BK -->|有效| OK1
+        DEFAULT --> OK1
+        OK1 --> APPS["AppConfig+BankConfig初始化"]
+        APPS --> JUMP["AppJump_ToNextApp"]
+        JUMP --> ENABLED{"APP1已启用?"}
+        ENABLED -->|否| FAIL1["跳转失败-停止"]
+        ENABLED -->|是| SEL["BankConfig_SelectNextBank"]
+        SEL --> BANK_OK{"Bank有效?"}
+        BANK_OK -->|否| DUAL{"双Bank模式?"}
+        DUAL -->|否| FAIL2["跳转失败-停止"]
+        DUAL -->|是| TRY["尝试另一Bank"]
+        TRY --> BANK2_OK{"Bank有效?"}
+        BANK2_OK -->|否| FAIL3["跳转失败-停止"]
+        BANK2_OK -->|是| VALID["AppJump_ValidateImage"]
+        BANK_OK -->|是| VALID
+        VALID --> IMG_OK{"镜像有效?"}
+        IMG_OK -->|否| FAIL4["跳转失败-停止"]
+        IMG_OK -->|是| TO_APP1["跳转APP1"]
     end
-
-    subgraph SBL["【阶段2】SBL启动流程"]
-        S1["hal_entry()"]
-        S2["初始化QSPI<br/>R_XSPI_QSPI_Open()"]
-        S3["初始化CRC<br/>CRC_Init()"]
-        
-        subgraph InitModules["模块初始化"]
-            SM1["SblBootParams_Init()<br/>读取启动参数"]
-            SM2["AppConfig_Init()<br/>APP配置管理"]
-            SM3["BankConfig_Init()<br/>Bank配置管理"]
-            SM4["LoaderTableManager_Init()<br/>Loader Table管理"]
-            SM5["AppJump_Init()<br/>跳转模块初始化"]
-        end
-        
-        S4["sblCheckBootParams()<br/>检查Boot Params"]
-        S5["AppJump_ToNextApp()<br/>获取目标APP"]
-        S6["AppConfig_IsEnabled()<br/>检查APP是否启用"]
-        S7{"APP1是否启用?"}
-        
-        S8["BankConfig_SelectNextBank()<br/>自动选择有效Bank"]
-        S9["BankConfig_IsBankValid()<br/>验证Bank有效性"]
-        
-        S10["LoaderTableManager_SelectEntry()<br/>选择Loader Table条目"]
-        S11["AppJump_ValidateImage()<br/>验证APP镜像"]
-        S12["从Flash复制到SRAM<br/>sbl_copy_multibyte()"]
-        S13["关闭UART + 禁用中断"]
-        S14["跳转到APP1入口<br/>app_prg()"]
-    end
-
-    subgraph APP1_INIT["【阶段3】APP1初始化"]
-        A1["hal_entry()"]
-        A2["__enable_irq() 启用中断"]
-        A3["R_SCI_UART_Open() 初始化UART"]
-        A4["R_XSPI_QSPI_Open() 初始化QSPI"]
-        A5["RM_ETHERCAT_SSC_PORT_Open()<br/>初始化EtherCAT SSC"]
-        A6["R_ETHER_PHY_StartAutoNegotiate()<br/> PHY自动协商"]
-        A7["MainInit() 初始化EtherCAT栈"]
-        A8["APPL_GenerateMapping()<br/>生成PDO映射"]
-        A9["bRunApplication = TRUE<br/>设置运行标志"]
-    end
-
-    subgraph APP1_RUN["【阶段4】APP1主循环"]
-        A10["MainLoop() 主循环"]
-        A11{"是否有EtherCAT<br/>帧到达?"}
-        A12["处理EtherCAT帧<br/>PDI/PDO更新"]
-        A13{"是否是FoE请求?"}
-    end
-
-    subgraph FOE_UPGRADE["【阶段5】FoE升级流程"]
-        F1["BL_Start()"]
-        F1a["CRC_Init() 初始化CRC"]
-        F1b["BankDetection_Init() 初始化Bank检测"]
-        F1c["SblBootParams_Init() 初始化Boot Params"]
-        F1d["读取版本号检查配置<br/>version_check_enabled"]
-        
-        F2["BL_StartDownload()"]
-        F2a["获取当前Bank<br/>BankDetection_GetCurrentBank()"]
-        F2b["等待固件头"]
-        
-        F3["BL_Data() - 首次接收"]
-        F3a["验证固件魔数 'APP'"]
-        F3b{"版本号检查<br/>新版本 > 当前版本?"}
-        F3c{"确定目标Bank<br/>自动模式/强制模式"]
-        F3d["擦除目标Bank<br/>R_XSPI_QSPI_Erase()"]
-        
-        F4["BL_Data() - 数据接收"]
-        F4a["写入环形队列<br/>Queue_Wirte()"]
-        F4b{"队列满256字节?"}
-        F4c["写入Flash<br/>norFlashPageProgram()"]
-        F4d["更新进度条<br/>Progress_Update()"]
-        
-        F5{"升级完成<br/>write_offset >= header_len?"}
-        F6["CRC校验<br/>CRC_Calculate()"]
-        F7["更新SII<br/>ESC_EepromAccess()"]
-        F8["更新SBL Boot Params<br/>SblBootParams_Write()"]
-        F9["BL_SetRebootFlag(TRUE)"]
-        F10["BL_Reboot() 系统复位"]
-    end
-
-    BR1 --> BR2 --> BR3 --> BR4 --> S1
-    S1 --> S2 --> S3
-    S2 --> S3
-    S3 --> InitModules
-    SM1 --> SM2 --> SM3 --> SM4 --> SM5
-    InitModules --> S4 --> S5 --> S6 --> S7
-    S7 -->|"是"| S8
-    S7 -->|"否"| S9
-    S8 --> S9 --> S10 --> S11 --> S12 --> S13 --> S14
     
-    S14 --> A1
-    A1 --> A2 --> A3 --> A4 --> A5 --> A6 --> A7 --> A8 --> A9
-    A9 --> A10
-    A10 --> A11
-    A11 -->|"否"| A10
-    A11 -->|"是"| A12
-    A12 --> A13
-    A13 -->|"否"| A10
-    A13 -->|"是"| F1
+    subgraph BootParams区
+        INIT -.-> ADDR1["0x600FF000主区"]
+        ADDR1 <--> ADDR2["0x600FE000备份区"]
+    end
     
-    F1 --> F1a --> F1b --> F1c --> F1d
-    F1d --> F2 --> F2a --> F2b
-    F2b --> F3
-    F3 --> F3a --> F3b --> F3c --> F3d
-    F3d --> F4
-    F4 --> F4a --> F4b
-    F4b -->|"否"| F4
-    F4b -->|"是"| F4c --> F4d --> F5
-    F5 -->|"否"| F4
-    F5 -->|"是"| F6 --> F7 --> F8 --> F9 --> F10
-    
-    style BootROM fill:#E6FFE6,stroke:#00CC00
-    style SBL fill:#FFF0E6,stroke:#FF9900
-    style APP1_INIT fill:#E6F3FF,stroke:#0066CC
-    style APP1_RUN fill:#E6F3FF,stroke:#0066CC
-    style FOE_UPGRADE fill:#FFE6E6,stroke:#CC0000
+    subgraph APP1运行
+        TO_APP1 --> HAL["hal_entry"]
+        HAL --> LOOP["MainLoop"]
+        LOOP --> FOE{"FoE请求?"}
+        FOE -->|否| LOOP
+        FOE -->|是| START_DL["BL_Start"]
+        START_DL --> WAIT["BL_StartDownload等待固件头"]
+        WAIT --> DATA1["BL_Data首次接收"]
+        DATA1 --> CHECK_APP["验证APP魔数"]
+        CHECK_APP --> APP_OK{"APP魔数有效?"}
+        APP_OK -->|否| ERR1["返回错误"]
+        APP_OK -->|是| VER_CHK{"版本号检查?"}
+        VER_CHK -->|否| SKIP["跳过版本检查"]
+        VER_CHK -->|是| VER_OK{"新版本>当前版本?"}
+        VER_OK -->|否| ERR2["返回错误"]
+        VER_OK -->|是| SEL_BANK["确定目标Bank"]
+        SEL_BANK --> ERASE["擦除目标Bank"]
+        ERASE --> DATA_WR["BL_Data写入Flash"]
+        DATA_WR --> DONE{"传输完成?"}
+        DONE -->|否| DATA_WR
+        DONE -->|是| CRC_CHK["CRC校验"]
+        CRC_CHK --> CRC_OK{"CRC匹配?"}
+        CRC_OK -->|否| FAIL5["升级失败"]
+        CRC_OK -->|是| WR_PARAMS["更新BootParams"]
+        WR_PARAMS --> REBOOT["复位重启"]
+        REBOOT --> START
+    end
 ```
+
+### 4.1 核心流程说明
+
+| 阶段 | 功能 |
+|------|------|
+| **SBL启动** | SblBootParams读取 -> 检查CRC -> 验证APP/Bank有效性 |
+| **Boot Params** | 双备份: 0x600FF000(主区) + 0x600FE000(备份区) |
+| **Bank选择** | 自动选择有效Bank，失败则回滚 |
+| **FoE升级** | 固件头验证 -> 版本检查 -> 批量写入 -> CRC校验 -> 重启 |
+| **回滚机制** | 连续3次启动失败自动回滚到旧Bank |
 
 ### 4.1 功能模块说明
 
