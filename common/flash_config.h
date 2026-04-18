@@ -70,6 +70,7 @@
 #define FW_UP_BANK1_ADDR        (0x60200000)    /* BANK1 user applicaiotn */
 
 #define FW_UP_BOOT_PARAMS_SIZE  (4 * 1024)      /* Sector size = 4 KB   */
+#define FW_UP_BOOT_PARAMS_BACKUP_SIZE (4 * 1024) /* Boot Params backup 4KB */
 #define FW_UP_SECTOR_SIZE       (64 * 1024)     /* Sector size = 64 KB   */
 #define FW_UP_TOTAL_SIZE        (128 * 1024)    /* Sector size = 128 KB   */
 

@@ -50,6 +50,7 @@ V4.20: File created
 #include "ecat_foe_data.h"
 #include "sbl_boot_params.h"
 #include "bank_detection.h"
+#include "progress.h"
 #include "log.h"
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
@@ -215,6 +216,11 @@ void BL_StartDownload(UINT32 password)
     // 暂不擦除Flash，等收到固件头并验证后再擦除
 }
 
+void Progress_Init_Callback(uint32_t total_size)
+{
+    Progress_Init(total_size);
+}
+
 UINT16 BL_Data(UINT16 *pData,UINT16 Size)
 {
     UINT16 ErrorCode = 0;
@@ -297,6 +303,9 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         }
 
         LOG_INFO("Bank%d erased successfully!\n", ota_handle.target_bank);
+
+        // 初始化进度条
+        Progress_Init(ota_handle.current_header.header_len);
     }
 
     // 写入数据到环形队列
@@ -314,10 +323,10 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         ota_handle.write_offset += FW_UP_PAGE_SIZE;
     }
 
-    // 1 to n-1 times: 显示进度
+    // 1 to n-1 times: 更新进度条
     if((ota_handle.recv_offset > 0) && (ota_handle.current_header.header_len - ota_handle.recv_offset > FW_UP_PACKAGE_SIZE))
     {
-        LOG_INFO("P:%ld%% ", ota_handle.write_offset*100/ota_handle.current_header.header_len);
+        //LOG_INFO("P:%ld%% ", ota_handle.write_offset*100/ota_handle.current_header.header_len);
     }
     // n last time and lastDataLen < 256
     else if((ota_handle.recv_offset > 0) && (ota_handle.current_header.header_len - ota_handle.recv_offset <= FW_UP_PACKAGE_SIZE))
@@ -332,21 +341,26 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
                             lastDataLen);
         ota_handle.write_offset += lastDataLen;
 
-        LOG_INFO("Last P:%ld%%\n", ota_handle.write_offset*100/ota_handle.current_header.header_len);
-        LOG_INFO("Write flash finished!!!\n");
+        //LOG_INFO("Last P:%ld%%\n", ota_handle.write_offset*100/ota_handle.current_header.header_len);
+        //LOG_INFO("Write flash finished!!!\n");
     }
+
+    // 更新进度条
+    Progress_Update(ota_handle.write_offset);
 
     // 升级完成: CRC校验 + 更新SII + 更新Boot Params
     if(ota_handle.write_offset >= ota_handle.current_header.header_len)
     {
         // 1. CRC校验
         uint32_t target_addr = BankDetection_GetBankAddress(ota_handle.target_bank);
-        volatile uint32_t *pCheckCrc = (UINT32 *)(target_addr - FW_UP_MIRROR_OFFSET);
+        uint32_t mirror_addr = target_addr - FW_UP_MIRROR_OFFSET;
 
-        uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)pCheckCrc, (int)(ota_handle.current_header.header_len - 4));
-        uint32_t crcFlashData = *((UINT32 *)(target_addr - FW_UP_MIRROR_OFFSET + ota_handle.current_header.header_len - 4));
+        uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)mirror_addr, (int)(ota_handle.current_header.header_len - 4));
 
-        if(crcCalRet != crcFlashData)
+        uint32_t crc_flash;
+        memcpy(&crc_flash, (uint8_t *)(mirror_addr + ota_handle.current_header.header_len - 4), sizeof(uint32_t));
+
+        if(crcCalRet != crc_flash)
         {
             LOG_ERROR("CRC check failed! calc=0x%lX, flash=0x%lX\n", crcCalRet, crcFlashData);
             return FOE_ERROR;
@@ -394,13 +408,16 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         LOG_INFO("Boot Params updated: Bank=%d, Version=0x%08X\n",
                  sbl_boot_params.current_bank, sbl_boot_params.header_version);
 
-        // 4. 设置重启标志
+        // 4. 完成进度条
+        Progress_Finish();
+
+        // 5. 设置重启标志
         BL_SetRebootFlag(TRUE);
 
-        // 5. 记录升级时间
+        // 6. 记录升级时间
         endTime = getGlobalCounter();
-        LOG_INFO("Upgrade completed! Time: %ldms\n",
-                 (uint32_t)(endTime - beginTime)/BSP_GLOBAL_SYSTEM_COUNTER_CLOCK_HZ*1000);
+        LOG_INFO("Time: %ldms\n",
+                 (uint32_t)((endTime - beginTime) * 1000 / BSP_GLOBAL_SYSTEM_COUNTER_CLOCK_HZ));
 
         return 0;
     }

@@ -69,6 +69,13 @@
     #define LOG_TRACE(...) ((void)0)
 #endif
 
+// 无前缀纯输出 - 用于进度条等需要精确格式的场景
+#if GLOBAL_GE(LOG_LEVEL_INFO)
+    #define LOG_RAW(...)  printf(__VA_ARGS__ )
+#else
+    #define LOG_RAW(...)  ((void)0)
+#endif
+
 #endif // LOG_H
 
 #endif /* COMMON_LOG_H_ */

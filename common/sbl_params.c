@@ -112,15 +112,17 @@ void sblCheckBootParams(void)
         bool bank1_valid = false;
 
         // 检查Bank0
-        volatile uint32_t *pCheckCrc0 = (uint32_t *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET);
-        app_header_t *header0 = (app_header_t *)pCheckCrc0;
+        uint32_t bank0_addr = FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET;
+        app_header_t *header0 = (app_header_t *)bank0_addr;
 
         if (memcmp(header0->header_app, "APP", 3) == 0)
         {
-            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)pCheckCrc0, (int)(header0->header_len - 4));
-            uint32_t crcFlashData = *((uint32_t *)((uint8_t*)pCheckCrc0 + header0->header_len - 4));
+            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank0_addr, (int)(header0->header_len - 4));
 
-            if (crcCalRet == crcFlashData)
+            uint32_t crc_flash;
+            memcpy(&crc_flash, (uint8_t *)(bank0_addr + header0->header_len - 4), sizeof(uint32_t));
+
+            if (crcCalRet == crc_flash)
             {
                 bank0_valid = true;
                 LOG_INFO("Bank0 firmware valid: Version=0x%08X\n", header0->header_version);
@@ -132,15 +134,17 @@ void sblCheckBootParams(void)
         }
 
         // 检查Bank1
-        volatile uint32_t *pCheckCrc1 = (uint32_t *)(FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET);
-        app_header_t *header1 = (app_header_t *)pCheckCrc1;
+        uint32_t bank1_addr = FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET;
+        app_header_t *header1 = (app_header_t *)bank1_addr;
 
         if (memcmp(header1->header_app, "APP", 3) == 0)
         {
-            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)pCheckCrc1, (int)(header1->header_len - 4));
-            uint32_t crcFlashData = *((uint32_t *)((uint8_t*)pCheckCrc1 + header1->header_len - 4));
+            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
 
-            if (crcCalRet == crcFlashData)
+            uint32_t crc_flash;
+            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - 4), sizeof(uint32_t));
+
+            if (crcCalRet == crc_flash)
             {
                 bank1_valid = true;
                 LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);

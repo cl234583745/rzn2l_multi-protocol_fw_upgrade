@@ -75,23 +75,52 @@ void SblBootParams_Init(void)
 }
 
 /*
- * 读取 SBL Boot Params
+ * 读取 SBL Boot Params (带备份恢复)
+ * 策略: 先读主区域，无效则读备份区
  */
 bool SblBootParams_Read(sbl_boot_params_t *params)
 {
     if (params == NULL)
         return false;
 
-    // 从Flash读取 SBL Boot Params (地址: FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE)
-    memcpy(params,
-           (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET - FW_UP_BOOT_PARAMS_SIZE),
-           sizeof(sbl_boot_params_t));
+    // 主区域地址: Bank0 前面 4KB
+    #define MAIN_PARAMS_ADDR   (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE)
+    // 备份区域地址: Bank0 前面 8KB (主区域前面)
+    #define BACKUP_PARAMS_ADDR (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE - FW_UP_BOOT_PARAMS_BACKUP_SIZE)
 
-    return true;
+    // 1. 先读取主区域
+    memcpy(params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+
+    // 2. 验证 CRC
+    if (SblBootParams_ValidateCRC(params))
+    {
+        return true;
+    }
+
+    // 3. 主区域无效，尝试读取备份区
+    LOG_WARN("SBL Boot Params main region invalid, trying backup...\n");
+    memcpy(params, (uint8_t *)BACKUP_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+
+    if (SblBootParams_ValidateCRC(params))
+    {
+        LOG_INFO("SBL Boot Params restored from backup!\n");
+        return true;
+    }
+
+    // 4. 都无效
+    LOG_ERROR("SBL Boot Params both main and backup invalid!\n");
+    return false;
 }
 
 /*
- * 写入 SBL Boot Params
+ * 写入 SBL Boot Params (带备份机制)
+ *
+ * 策略:
+ * 1. 先读取现有 Boot Params 作为备份 (从备份区)
+ * 2. 擦除主区域
+ * 3. 写入新的 Boot Params 到主区域
+ * 4. 验证写入
+ * 5. 写入备份区
  */
 bool SblBootParams_Write(const sbl_boot_params_t *params)
 {
@@ -100,17 +129,30 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
     spi_flash_status_t status_erase;
 
-    // 1. 擦除 SBL Boot Params 区域
+    // 主区域地址: Bank0 前面 4KB
+    #define MAIN_PARAMS_ADDR   (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE)
+    // 备份区域地址: Bank0 前面 8KB (主区域前面)
+    #define BACKUP_PARAMS_ADDR (FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE - FW_UP_BOOT_PARAMS_BACKUP_SIZE)
+
+    // 1. 先读取现有 Boot Params (用于失败恢复)
+    sbl_boot_params_t old_params;
+    bool has_backup = false;
+    memcpy(&old_params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+    if (SblBootParams_ValidateCRC(&old_params))
+    {
+        has_backup = true;
+    }
+
+    // 2. 擦除主区域
     R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
-                      (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE),
+                      (uint8_t *)MAIN_PARAMS_ADDR,
                       FW_UP_BOOT_PARAMS_SIZE);
 
-    // 等待擦除完成
     do {
         R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
     } while (status_erase.write_in_progress);
 
-    // 2. 写入 SBL Boot Params (分多次写入，每次64字节)
+    // 3. 写入新的 Boot Params 到主区域 (分多次写入，每次64字节)
     uint8_t *data = (uint8_t *)params;
     uint32_t total_size = sizeof(sbl_boot_params_t);
     uint32_t offset = 0;
@@ -122,10 +164,81 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
         R_XSPI_QSPI_Write(&g_qspi0_ctrl,
                           data + offset,
-                          (uint8_t *)(FW_UP_BANK0_ADDR - FW_UP_BOOT_PARAMS_SIZE + offset),
+                          (uint8_t *)(MAIN_PARAMS_ADDR + offset),
                           write_size);
 
-        // 等待写入完成
+        do {
+            R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
+        } while (status_erase.write_in_progress);
+
+        offset += write_size;
+    }
+
+    // 4. 验证写入
+    sbl_boot_params_t verify_params;
+    memcpy(&verify_params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+    if (!SblBootParams_ValidateCRC(&verify_params))
+    {
+        LOG_ERROR("SblBootParams_Write: Verify failed!\n");
+
+        // 尝试恢复旧数据
+        if (has_backup)
+        {
+            LOG_INFO("SblBootParams_Write: Restoring old params...\n");
+            offset = 0;
+            data = (uint8_t *)&old_params;
+
+            R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
+                              (uint8_t *)MAIN_PARAMS_ADDR,
+                              FW_UP_BOOT_PARAMS_SIZE);
+
+            do {
+                R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
+            } while (status_erase.write_in_progress);
+
+            while (offset < total_size)
+            {
+                uint32_t write_size = (total_size - offset) > FW_UP_WRITE_ATONCE_SIZE ?
+                                      FW_UP_WRITE_ATONCE_SIZE : (total_size - offset);
+
+                R_XSPI_QSPI_Write(&g_qspi0_ctrl,
+                                  data + offset,
+                                  (uint8_t *)(MAIN_PARAMS_ADDR + offset),
+                                  write_size);
+
+                do {
+                    R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
+                } while (status_erase.write_in_progress);
+
+                offset += write_size;
+            }
+        }
+
+        return false;
+    }
+
+    // 5. 写入备份区
+    R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
+                      (uint8_t *)BACKUP_PARAMS_ADDR,
+                      FW_UP_BOOT_PARAMS_SIZE);
+
+    do {
+        R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
+    } while (status_erase.write_in_progress);
+
+    offset = 0;
+    data = (uint8_t *)params;
+
+    while (offset < total_size)
+    {
+        uint32_t write_size = (total_size - offset) > FW_UP_WRITE_ATONCE_SIZE ?
+                              FW_UP_WRITE_ATONCE_SIZE : (total_size - offset);
+
+        R_XSPI_QSPI_Write(&g_qspi0_ctrl,
+                          data + offset,
+                          (uint8_t *)(BACKUP_PARAMS_ADDR + offset),
+                          write_size);
+
         do {
             R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
         } while (status_erase.write_in_progress);
