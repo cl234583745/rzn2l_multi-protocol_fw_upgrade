@@ -1,3 +1,9 @@
+# Build output
+**/Debug/
+**/Release/
+**/Debug_local/
+**/.settings/
+
 # Prerequisites
 *.d
 
