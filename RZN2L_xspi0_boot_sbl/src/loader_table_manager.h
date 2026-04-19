@@ -24,6 +24,7 @@ typedef struct {
     uint32_t dst_addr;          // 目标地址 (RAM)
     uint32_t size;              // 大小
     bool is_enabled;            // 是否启用
+    bool is_dual_bank;         // 双Bank标志
 } loader_table_entry_t;
 
 /*
@@ -56,5 +57,27 @@ bool LoaderTableManager_IsEntryValid(uint8_t app_id, uint8_t bank_id);
 
 // 打印Loader Table信息 (调试用)
 void LoaderTableManager_PrintInfo(void);
+
+/*
+ * AppConfig兼容API (替代app_config)
+ */
+
+// 验证APP ID是否有效
+bool LoaderTableManager_IsValidAppId(uint8_t app_id);
+
+// 检查APP是否启用
+bool LoaderTableManager_IsEnabled(uint8_t app_id);
+
+// 检查APP是否为双Bank模式
+bool LoaderTableManager_IsDualBank(uint8_t app_id);
+
+// 获取APP的Bank数量
+uint8_t LoaderTableManager_GetBankCount(uint8_t app_id);
+
+// 获取APP的Bank地址
+uint32_t LoaderTableManager_GetBankAddress(uint8_t app_id, uint8_t bank_id);
+
+// 获取下一个启用的APP ID
+uint8_t LoaderTableManager_GetNextEnabledApp(uint8_t current_app_id);
 
 #endif /* COMMON_LOADER_TABLE_MANAGER_H_ */

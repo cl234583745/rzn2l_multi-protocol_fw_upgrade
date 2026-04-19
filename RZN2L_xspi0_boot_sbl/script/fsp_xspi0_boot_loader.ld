@@ -103,6 +103,7 @@ MEMORY
 
 SECTIONS
 {
+
     .APP1_BANK0_IMAGE_APP_RAM 0x10010000 : AT (0x10010000)
     {
         APP1_BANK0_IMAGE_APP_RAM_start = .;
@@ -117,7 +118,7 @@ SECTIONS
     .APP1_BANK0_IMAGE_APP_FLASH_section APP1_BANK0_ADDR : AT (APP1_BANK0_ADDR)
     {
         APP1_BANK0_IMAGE_APP_FLASH_section_start = .;
-        KEEP(./src/APP1_BANK0_Flash_section.o(.APP1_BANK0_IMAGE_APP_FLASH_section))
+        KEEP(./src/flash_sections/APP1_BANK0_Flash_section.o(.APP1_BANK0_IMAGE_APP_FLASH_section))
         APP1_BANK0_IMAGE_APP_FLASH_section_end = .;
     }
     APP1_BANK0_IMAGE_APP_FLASH_section_size = SIZEOF(.APP1_BANK0_IMAGE_APP_FLASH_section);
@@ -125,12 +126,17 @@ SECTIONS
     .APP1_BANK1_IMAGE_APP_FLASH_section APP1_BANK1_ADDR : AT (APP1_BANK1_ADDR)
     {
         APP1_BANK1_IMAGE_APP_FLASH_section_start = .;
-        KEEP(./src/APP1_BANK1_Flash_section.o(.APP1_BANK1_IMAGE_APP_FLASH_section))
+        KEEP(./src/flash_sections/APP1_BANK1_Flash_section.o(.APP1_BANK1_IMAGE_APP_FLASH_section))
         APP1_BANK1_IMAGE_APP_FLASH_section_end = .;
     }
     APP1_BANK1_IMAGE_APP_FLASH_section_size = SIZEOF(.APP1_BANK1_IMAGE_APP_FLASH_section);
-    
-   
+
+
+/* APP2-5 预留区域 - 暂未定义
+ * 创建 APP2-5 工程后在此添加对应的 section 定义
+ */
+
+
     .loader_param LOADER_PARAM_ADDRESS : AT (LOADER_PARAM_ADDRESS)
     {
         LOADER_PARAM_start = .;

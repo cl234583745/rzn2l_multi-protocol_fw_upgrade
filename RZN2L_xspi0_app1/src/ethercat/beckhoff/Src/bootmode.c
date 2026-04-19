@@ -46,7 +46,6 @@ V4.20: File created
 #include "circular_queue.h"
 #include "crc32_table.h"
 #include "bsp_r52_global_counter.h"
-#include "sbl_params.h"
 #include "ecat_foe_data.h"
 #include "sbl_boot_params.h"
 #include "bank_detection.h"
@@ -55,7 +54,54 @@ V4.20: File created
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
 
-#define    DEBUG                    1
+
+// ============================================================================
+// APP1固件版本号定义 (易读、易修改、易比较)
+// ============================================================================
+
+#ifndef APP1_VERSION_MAJOR
+#define APP1_VERSION_MAJOR  1
+#endif
+
+#ifndef APP1_VERSION_MINOR
+#define APP1_VERSION_MINOR  2
+#endif
+
+#ifndef APP1_VERSION_PATCH
+#define APP1_VERSION_PATCH  3
+#endif
+
+#ifndef APP1_VERSION_REVISION
+#define APP1_VERSION_REVISION  0
+#endif
+
+#define APP1_VERSION ((APP1_VERSION_MAJOR << 24) | (APP1_VERSION_MINOR << 16) | (APP1_VERSION_PATCH << 8) | APP1_VERSION_REVISION)
+
+
+
+#ifndef APP1_STR_1
+#define APP1_STR_1  'A'
+#endif
+
+#ifndef APP1_STR_2
+#define APP1_STR_2  'P'
+#endif
+
+#ifndef APP1_STR_3
+#define APP1_STR_3  'P'   
+#endif
+
+#ifndef APP1_STR_4
+#define APP1_STR_4  '1'
+#endif  
+// 用字符数组方式拼接（最后加'\0'变成字符串）
+#define APP1_STR_DEFAULT ((const char[]){APP1_STR_1, APP1_STR_2, APP1_STR_3, APP1_STR_4, '\0'})
+#ifndef APP1_STR
+#define APP1_STR APP1_STR_DEFAULT
+#endif
+
+static const char app1_str[] = APP1_STR;  // "APP1"
+
 
 
 
@@ -65,42 +111,12 @@ static volatile uint64_t endTime = 0;
 CRC_Context ctx;
 static BOOL   bReBoot;
 
-// ============================================================================
-// APP1固件版本号定义 (易读、易修改、易比较)
-// ============================================================================
-// 格式: Major.Minor.Patch (语义化版本规范)
-// 例如: 1.2.3 表示主版本1，次版本2，补丁版本3
-// 每个字段范围: 0-255，足够使用
-// 
-// 修改方法: 直接修改下面的数字即可
-// 例如: 发布v2.1.0版本，修改为:
-//       #define APP1_VERSION_MAJOR  2
-//       #define APP1_VERSION_MINOR  1
-//       #define APP1_VERSION_PATCH  0
-// ============================================================================
-#ifndef APP1_VERSION_MAJOR
-#define APP1_VERSION_MAJOR  1
-#endif
-
-#ifndef APP1_VERSION_MINOR
-#define APP1_VERSION_MINOR  0
-#endif
-
-#ifndef APP1_VERSION_PATCH
-#define APP1_VERSION_PATCH  0
-#endif
-
-// 自动组合版本号 (无需手动修改)
-// 格式: 0x00MMmmpp (MM=Major, mm=Minor, pp=Patch)
-// 例如: v1.2.3 -> 0x00010203
-#define APP1_VERSION ((APP1_VERSION_MAJOR << 16) | (APP1_VERSION_MINOR << 8) | APP1_VERSION_PATCH)
-
-BSP_DONT_REMOVE const uint8_t g_header[HEADER_PARAMS_LENS] BSP_PLACE_IN_SECTION(".header") = {
-    'A', 'P', 'P',  // "APP"
+BSP_DONT_REMOVE const uint8_t g_header[SBL_BOOT_PARAMS_SIZE] BSP_PLACE_IN_SECTION(".header") = {
+    APP1_STR_1, APP1_STR_2, APP1_STR_3, APP1_STR_4, // "APP1"
     (APP1_VERSION >> 0) & 0xFF,  // Patch
     (APP1_VERSION >> 8) & 0xFF,  // Minor
     (APP1_VERSION >> 16) & 0xFF, // Major
-    (APP1_VERSION >> 24) & 0xFF  // 保留(0x00)
+    (APP1_VERSION >> 24) & 0xFF  // Revision
 };
 
 BSP_DONT_REMOVE const uint32_t g_identify[4] BSP_PLACE_IN_SECTION(".identify") = {(VENDOR_ID), (PRODUCT_CODE), (REVISION_NUMBER), (SERIAL_NUMBER)};
@@ -147,9 +163,6 @@ void BL_Start( UINT8 State)
     // 初始化Bank检测
     BankDetection_Init();
 
-    // 初始化Boot Params
-    SblBootParams_Init();
-
 #if 0//test crc32
     LOG_DEBUG("=== CRC32 Test ===\n\n");
 
@@ -164,32 +177,17 @@ void BL_Start( UINT8 State)
     memset(&ota_handle, 0 , sizeof(ota_handle_t));
     Queue_Init((Circular_queue_t*)&Circular_queue);
 
-    // 设置版本号检查选项 (从Boot Params读取)
-    sbl_boot_params_t sbl_boot_params;
-    if (SblBootParams_Read(&sbl_boot_params) && SblBootParams_ValidateCRC(&sbl_boot_params))
-    {
-        ota_handle.version_check_enabled = (sbl_boot_params.version_check_enable != 0);
-    }
-    else
-    {
-        // 默认启用版本号检查
-        ota_handle.version_check_enabled = true;
-    }
+    // 默认启用版本号检查
+    ota_handle.version_check_enabled = SBL_BOOT_PARAMS_VERSION_CHECK_ENABLE;
 
-#if DEBUG
     LOG_INFO("%s State=%d, VersionCheck=%d\n", __FUNCTION__, State, ota_handle.version_check_enabled);
-#endif
-#if 0
-    char buffer[] = "BL_Start\n";
-    R_SCI_UART_Write(&g_uart0_ctrl, (uint8_t*) &buffer, 9);
-#endif
 }
 
 void BL_Stop(void)
 {
-#if DEBUG
+
     LOG_INFO("%s\n", __FUNCTION__);
-#endif
+
 }
 
 
@@ -209,9 +207,9 @@ void BL_StartDownload(UINT32 password)
     }
 
     // 确定目标Bank (将在BL_Data中根据固件头确定)
-    ota_handle.target_bank = BANK_UNKNOWN;
+    ota_handle.target_bank = BankDetection_GetTargetBank(current_bank);
 
-    LOG_INFO("BL_StartDownload: Current Bank=%d, waiting for firmware header...\n", current_bank);
+    LOG_INFO("BL_StartDownload: Current Bank=%d, target_bank=%d, waiting for firmware header...\n", current_bank, ota_handle.target_bank);
 
     // 暂不擦除Flash，等收到固件头并验证后再擦除
 }
@@ -231,20 +229,19 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
     {
         app_header_t *fw_header = (app_header_t *)pData;
 
-        // 1. 验证固件魔数 "APP"
-        if (memcmp(fw_header->header_app, "APP", 3) != 0)
+        // 1. 验证固件魔数 "APP1"
+        if (memcmp(fw_header->header_app, app1_str, strlen(app1_str)) != 0)
         {
-            LOG_ERROR("Invalid firmware magic! Expected 'APP', got '%c%c%c'\n",
-                      fw_header->header_app[0], fw_header->header_app[1], fw_header->header_app[2]);
+            LOG_ERROR("Invalid firmware magic! Expected 'APP1', got '%c%c%c%c'\n",
+                      fw_header->header_app[0], fw_header->header_app[1], fw_header->header_app[2], fw_header->header_app[3]);
             return FOE_ERROR;
         }
 
         // 2. 保存固件头
         memcpy(&ota_handle.current_header, fw_header, sizeof(app_header_t));
 
-        LOG_INFO("Firmware Header: Version=0x%08X, TargetBank=%d, Len=%ld\n",
+        LOG_INFO("Firmware Header: Version=0x%08X, Len=%ld\n",
                  fw_header->header_version,
-                 fw_header->header_target_bank,
                  fw_header->header_len);
 
         // 3. 版本号检查
@@ -262,23 +259,8 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         }
 
         // 4. 确定目标Bank
-        if (fw_header->header_target_bank == BANK_UNKNOWN)
-        {
-            // 自动模式: 写入另一个Bank
-            ota_handle.target_bank = BankDetection_GetTargetBank(current_bank);
-        }
-        else
-        {
-            // 强制模式: 检查有效性
-            if (!BankDetection_IsTargetBankValid(fw_header->header_target_bank, current_bank))
-            {
-                LOG_ERROR("Invalid target bank! current=%d, target=%d\n",
-                          current_bank, fw_header->header_target_bank);
-                return FOE_ERROR;
-            }
-            ota_handle.target_bank = fw_header->header_target_bank;
-        }
-
+        // 自动模式: 写入另一个Bank
+        ota_handle.target_bank = BankDetection_GetTargetBank(current_bank);
         LOG_INFO("Firmware upgrade: Bank%d -> Bank%d\n", current_bank, ota_handle.target_bank);
 
         // 5. 擦除目标Bank
@@ -384,16 +366,16 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         memset(&sbl_boot_params, 0, sizeof(sbl_boot_params_t));
 
         // 填充Boot Params
-        memcpy(sbl_boot_params.header_app, "APP", 3);
-        sbl_boot_params.header_version = ota_handle.current_header.header_version;
-        sbl_boot_params.target_app = 1;  // APP1
-        sbl_boot_params.current_bank = ota_handle.target_bank;  // 下次启动的Bank
-        sbl_boot_params.target_bank = ota_handle.target_bank;
-        sbl_boot_params.version_check_enable = ota_handle.version_check_enabled ? 1 : 0;
-        sbl_boot_params.vendor_id = ota_handle.current_header.dword[0];
-        sbl_boot_params.product_code = ota_handle.current_header.dword[1];
-        sbl_boot_params.revision_number = ota_handle.current_header.dword[2];
-        sbl_boot_params.serial_number = ota_handle.current_header.dword[3];
+        memcpy(sbl_boot_params.f.header_app, app1_str, strlen(app1_str));  // "APP1"
+        sbl_boot_params.f.header_version = ota_handle.current_header.header_version;
+        sbl_boot_params.f.target_app = APP1_ID;  // 1:APP1
+        sbl_boot_params.f.current_bank = ota_handle.target_bank;  // 下次启动的Bank
+        sbl_boot_params.f.target_bank = ota_handle.target_bank;
+        sbl_boot_params.f.version_check_enable = ota_handle.version_check_enabled ? 1 : 0;
+        sbl_boot_params.f.vendor_id = ota_handle.current_header.dword[0];
+        sbl_boot_params.f.product_code = ota_handle.current_header.dword[1];
+        sbl_boot_params.f.revision_number = ota_handle.current_header.dword[2];
+        sbl_boot_params.f.serial_number = ota_handle.current_header.dword[3];
 
         // 计算并设置CRC
         SblBootParams_UpdateCRC(&sbl_boot_params);
@@ -406,7 +388,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         }
 
         LOG_INFO("Boot Params updated: Bank=%d, Version=0x%08X\n",
-                 sbl_boot_params.current_bank, sbl_boot_params.header_version);
+                 sbl_boot_params.f.current_bank, sbl_boot_params.f.header_version);
 
         // 4. 完成进度条
         Progress_Finish();

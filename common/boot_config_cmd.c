@@ -30,7 +30,7 @@ bool BootConfig_DisableVersionCheck(void)
     }
 
     // 禁用版本号检查
-    params.version_check_enable = 0;
+    params.f.version_check_enable = 0;
 
     // 更新CRC
     SblBootParams_UpdateCRC(&params);
@@ -62,7 +62,7 @@ bool BootConfig_EnableVersionCheck(void)
     }
 
     // 启用版本号检查
-    params.version_check_enable = 1;
+    params.f.version_check_enable = 1;
 
     // 更新CRC
     SblBootParams_UpdateCRC(&params);
@@ -100,7 +100,7 @@ bool BootConfig_SetTargetBank(uint8_t bank)
     }
 
     // 设置目标Bank
-    params.target_bank = bank;
+    params.f.target_bank = bank;
 
     // 更新CRC
     SblBootParams_UpdateCRC(&params);
@@ -138,13 +138,13 @@ bool BootConfig_GetCurrentConfig(sbl_boot_params_t *params)
 
     LOG_INFO("Current Config:\n");
     LOG_INFO("  Version: %d.%d.%d\n",
-             (params->header_version >> 16) & 0xFF,
-             (params->header_version >> 8) & 0xFF,
-             params->header_version & 0xFF);
-    LOG_INFO("  Current Bank: %d\n", params->current_bank);
-    LOG_INFO("  Target Bank: %d\n", params->target_bank);
+             (params->f.header_version >> 16) & 0xFF,
+             (params->f.header_version >> 8) & 0xFF,
+             params->f.header_version & 0xFF);
+    LOG_INFO("  Current Bank: %d\n", params->f.current_bank);
+    LOG_INFO("  Target Bank: %d\n", params->f.target_bank);
     LOG_INFO("  Version Check: %s\n",
-             params->version_check_enable ? "Enabled" : "Disabled");
+             params->f.version_check_enable ? "Enabled" : "Disabled");
 
     return true;
 }

@@ -433,7 +433,6 @@ uint8_t BankDetection_GetTargetBank(uint8_t current_bank);
 |------|------|
 | `header_app` | "APP" 魔数 |
 | `header_version` | 版本号 (0x00MMmmpp) |
-| `header_target_bank` | 0xFF=自动模式 |
 
 ### 8.3 Python脚本用法
 

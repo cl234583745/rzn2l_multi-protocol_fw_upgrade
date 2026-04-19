@@ -62,16 +62,22 @@
 #define APP5_DUAL_BANK          0   // app5 默认单 bank
 #endif
 
+#define APP1_ID     1
+#define APP2_ID     2
+#define APP3_ID     3
+#define APP4_ID     4
+#define APP5_ID     5
 
-
-
-
-
-
-
+#define BANK0_ID    0
+#define BANK1_ID    1
 
 
 #if SBL_ENABLE
+/*
+ * SBL Boot Params结构 (256字节)
+ */
+#define SBL_BOOT_PARAMS_SIZE  256
+
 //fsp_xspi0_boot_loader.ld中定义的符号，链接时由ld文件生成            
 extern uint32_t LOADER_PARAM_start;
 extern uint32_t LOADER_PARAM_end;
@@ -124,9 +130,10 @@ extern uint32_t SBL_BOOT_PARAMS_end;
 
 
 #if APP1_ENABLE
+
 //fsp_xspi0_boot_loader.ld中定义的符号，链接时由ld文件生成
-extern uint32_t APP1_PARAMS_LENS;
-extern uint32_t APP1_PARAMS_OFFSET;
+extern uint32_t APP1_HEADER_LENS;
+extern uint32_t APP1_IDENTIFY_LENS;
 
 extern uint32_t APP1_BANK0_ADDR;
 extern uint32_t APP1_BANK0_IMAGE_APP_RAM_start;
@@ -191,32 +198,106 @@ extern uint32_t APP1_BANK1_IMAGE_APP_FLASH_section_size;
 
 #define FW_UP_MIRROR_OFFSET     (0x20000000)    /* xSPI0 Mirror space minus offset  */
 
-#define FW_UP_PACKAGE_SIZE      (116)// package send size
+#define APP1_FW_OFFSET_HEADER   APP1_HEADER_LENS + APP1_IDENTIFY_LENS// 256+4x4
 
-#define APP1_HDR                9//APP1BANK0
-
-#define SBL_BOOT_PARAMS_LENS    29// (9+16+4)
-
-#define APP1_FW_OFFSET_HEADER   APP1_PARAMS_LENS + APP1_PARAMS_OFFSET// 0x4c+4x4
-#define SBL_BOOT_PARAMS_LENS    29
 
 
 #endif//#if APP1_ENABLE
 
 #if APP2_ENABLE
+#define APP2_ID     2
 
+extern uint32_t APP2_BANK0_ADDR;
+extern uint32_t APP2_BANK0_IMAGE_APP_RAM_start;
+extern uint32_t APP2_BANK0_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP2_BANK0_IMAGE_APP_FLASH_section_size;
+
+extern uint32_t APP2_BANK1_ADDR;
+extern uint32_t APP2_BANK1_IMAGE_APP_RAM_start;
+extern uint32_t APP2_BANK1_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP2_BANK1_IMAGE_APP_FLASH_section_size;
+
+#if defined(__GNUC__)
+#define app2_bank0_prg_flash_addr ((uint32_t)&APP2_BANK0_IMAGE_APP_FLASH_section_start)
+#define app2_bank0_prg_start_addr (&APP2_BANK0_IMAGE_APP_RAM_start)
+#define app2_bank0_prg_size       (&APP2_BANK0_IMAGE_APP_FLASH_section_size)
+
+#define app2_bank1_prg_flash_addr ((uint32_t)&APP2_BANK1_IMAGE_APP_FLASH_section_start)
+#define app2_bank1_prg_start_addr (&APP2_BANK1_IMAGE_APP_RAM_start)
+#define app2_bank1_prg_size       (&APP2_BANK1_IMAGE_APP_FLASH_section_size)
+#endif
 #endif//#if APP2_ENABLE
 
 #if APP3_ENABLE
+#define APP3_ID     3
 
+extern uint32_t APP3_BANK0_ADDR;
+extern uint32_t APP3_BANK0_IMAGE_APP_RAM_start;
+extern uint32_t APP3_BANK0_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP3_BANK0_IMAGE_APP_FLASH_section_size;
+
+extern uint32_t APP3_BANK1_ADDR;
+extern uint32_t APP3_BANK1_IMAGE_APP_RAM_start;
+extern uint32_t APP3_BANK1_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP3_BANK1_IMAGE_APP_FLASH_section_size;
+
+#if defined(__GNUC__)
+#define app3_bank0_prg_flash_addr ((uint32_t)&APP3_BANK0_IMAGE_APP_FLASH_section_start)
+#define app3_bank0_prg_start_addr (&APP3_BANK0_IMAGE_APP_RAM_start)
+#define app3_bank0_prg_size       (&APP3_BANK0_IMAGE_APP_FLASH_section_size)
+
+#define app3_bank1_prg_flash_addr ((uint32_t)&APP3_BANK1_IMAGE_APP_FLASH_section_start)
+#define app3_bank1_prg_start_addr (&APP3_BANK1_IMAGE_APP_RAM_start)
+#define app3_bank1_prg_size       (&APP3_BANK1_IMAGE_APP_FLASH_section_size)
+#endif
 #endif//#if APP3_ENABLE
 
 #if APP4_ENABLE
+#define APP4_ID     4
 
+extern uint32_t APP4_BANK0_ADDR;
+extern uint32_t APP4_BANK0_IMAGE_APP_RAM_start;
+extern uint32_t APP4_BANK0_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP4_BANK0_IMAGE_APP_FLASH_section_size;
+
+extern uint32_t APP4_BANK1_ADDR;
+extern uint32_t APP4_BANK1_IMAGE_APP_RAM_start;
+extern uint32_t APP4_BANK1_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP4_BANK1_IMAGE_APP_FLASH_section_size;
+
+#if defined(__GNUC__)
+#define app4_bank0_prg_flash_addr ((uint32_t)&APP4_BANK0_IMAGE_APP_FLASH_section_start)
+#define app4_bank0_prg_start_addr (&APP4_BANK0_IMAGE_APP_RAM_start)
+#define app4_bank0_prg_size       (&APP4_BANK0_IMAGE_APP_FLASH_section_size)
+
+#define app4_bank1_prg_flash_addr ((uint32_t)&APP4_BANK1_IMAGE_APP_FLASH_section_start)
+#define app4_bank1_prg_start_addr (&APP4_BANK1_IMAGE_APP_RAM_start)
+#define app4_bank1_prg_size       (&APP4_BANK1_IMAGE_APP_FLASH_section_size)
+#endif
 #endif//#if APP4_ENABLE
 
 #if APP5_ENABLE
+#define APP5_ID     5
 
+extern uint32_t APP5_BANK0_ADDR;
+extern uint32_t APP5_BANK0_IMAGE_APP_RAM_start;
+extern uint32_t APP5_BANK0_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP5_BANK0_IMAGE_APP_FLASH_section_size;
+
+extern uint32_t APP5_BANK1_ADDR;
+extern uint32_t APP5_BANK1_IMAGE_APP_RAM_start;
+extern uint32_t APP5_BANK1_IMAGE_APP_FLASH_section_start;
+extern uint32_t APP5_BANK1_IMAGE_APP_FLASH_section_size;
+
+#if defined(__GNUC__)
+#define app5_bank0_prg_flash_addr ((uint32_t)&APP5_BANK0_IMAGE_APP_FLASH_section_start)
+#define app5_bank0_prg_start_addr (&APP5_BANK0_IMAGE_APP_RAM_start)
+#define app5_bank0_prg_size       (&APP5_BANK0_IMAGE_APP_FLASH_section_size)
+
+#define app5_bank1_prg_flash_addr ((uint32_t)&APP5_BANK1_IMAGE_APP_FLASH_section_start)
+#define app5_bank1_prg_start_addr (&APP5_BANK1_IMAGE_APP_RAM_start)
+#define app5_bank1_prg_size       (&APP5_BANK1_IMAGE_APP_FLASH_section_size)
+#endif
 #endif//#if APP5_ENABLE
 
 #endif /* FLASH_CONFIG_H_ */

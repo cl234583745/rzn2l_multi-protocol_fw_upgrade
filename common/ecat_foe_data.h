@@ -9,19 +9,18 @@
 #ifndef COMMON_ECAT_FOE_DATA_H_
 #define COMMON_ECAT_FOE_DATA_H_
 
+#define FW_UP_PACKAGE_SIZE      (116)// package send size
 
-#define    HEADER_PARAMS_APP        3   // "APP"
+#define    HEADER_PARAMS_APP        4   // "APP1"
 #define    HEADER_PARAMS_VERSION    4   // 4字节版本号
-#define    HEADER_PARAMS_LENS       0x4c
 
 #pragma pack(1)
 typedef struct
 {
     uint8_t header_app[HEADER_PARAMS_APP];      // "APP"
     uint32_t header_version;                    // 固件版本号 (例如: 0x00010002 = v1.0.2)
-    uint8_t header_target_bank;                 // 目标Bank: 0=Bank0, 1=Bank1, 0xFF=自动
     uint32_t header_len;                        // 固件总长度
-    uint8_t header_reserved[HEADER_PARAMS_LENS - HEADER_PARAMS_APP - HEADER_PARAMS_VERSION - 1 - 4];
+    uint8_t header_reserved[SBL_BOOT_PARAMS_SIZE - HEADER_PARAMS_APP - HEADER_PARAMS_VERSION - 4];
 
     union
     {

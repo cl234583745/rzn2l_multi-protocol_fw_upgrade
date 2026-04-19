@@ -3,26 +3,21 @@
  *
  *  Created on: 2026年4月14日
  *      Author: Jerry.Chen
+ *
+ *  统一Loader Table管理 - 替代app_config
+ *  提供统一的APP配置查询API
  */
 
 #include "loader_table_manager.h"
-#include "app_config.h"
+#include "loader_table.h"
+#include "flash_config.h"
 #include "log.h"
 
-// 定义loader_table_t结构 (与loader_table.h中一致)
-typedef struct {
-    uint32_t * src;
-    uint32_t * dst;
-    uint32_t size;
-    uint32_t enable_flag;
-    uint8_t app_id;
-    uint8_t bank_id;
-    uint8_t reserved[2];
-} loader_table_t;
+
 
 // 引用外部Loader Table
 extern const loader_table_t loader_table[];
-#define TABLE_ENTRY_NUM 4
+
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_INFO
 
@@ -48,14 +43,25 @@ bool LoaderTableManager_GetEntry(uint8_t app_id, uint8_t bank_id, loader_table_e
     // 遍历Loader Table查找匹配的条目
     for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
     {
-        if (loader_table[i].app_id == app_id && loader_table[i].bank_id == bank_id)
+        if (loader_table[i].f.app_id == app_id && loader_table[i].f.bank_id == bank_id)
         {
-            entry->app_id = loader_table[i].app_id;
-            entry->bank_id = loader_table[i].bank_id;
-            entry->src_addr = (uint32_t)loader_table[i].src;
-            entry->dst_addr = (uint32_t)loader_table[i].dst;
-            entry->size = loader_table[i].size;
-            entry->is_enabled = (loader_table[i].enable_flag == 1);
+            entry->app_id = loader_table[i].f.app_id;
+            entry->bank_id = loader_table[i].f.bank_id;
+            entry->src_addr = (uint32_t)loader_table[i].f.src;
+            entry->dst_addr = (uint32_t)loader_table[i].f.dst;
+            entry->size = loader_table[i].f.size;
+            entry->is_enabled = (loader_table[i].f.enable_flag == 1);
+
+            // is_dual_bank 存储在 bank_id=0 的条目中
+            entry->is_dual_bank = false;
+            for (uint8_t j = 0; j < TABLE_ENTRY_NUM; j++)
+            {
+                if (loader_table[j].f.app_id == app_id && loader_table[j].f.bank_id == 0)
+                {
+                    entry->is_dual_bank = (loader_table[j].f.is_dual_bank == 1);
+                    break;
+                }
+            }
             return true;
         }
     }
@@ -129,7 +135,7 @@ uint8_t LoaderTableManager_GetEnabledCount(void)
 
     for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
     {
-        if (loader_table[i].enable_flag == 1)
+        if (loader_table[i].f.enable_flag == 1)
         {
             count++;
         }
@@ -172,8 +178,148 @@ void LoaderTableManager_PrintInfo(void)
     {
         LOG_INFO("  Entry[%d]: APP%d Bank%d, %s\n",
                  i,
-                 loader_table[i].app_id,
-                 loader_table[i].bank_id,
-                 loader_table[i].enable_flag ? "Enabled" : "Disabled");
+                 loader_table[i].f.app_id,
+                 loader_table[i].f.bank_id,
+                 loader_table[i].f.enable_flag ? "Enabled" : "Disabled");
     }
+}
+
+/*
+ * AppConfig兼容API - 验证APP ID是否有效
+ */
+bool LoaderTableManager_IsValidAppId(uint8_t app_id)
+{
+    if (app_id < 1 || app_id > 5)
+    {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
+    {
+        if (loader_table[i].f.app_id == app_id && loader_table[i].f.bank_id != 0xFF)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/*
+ * AppConfig兼容API - 检查APP是否启用
+ */
+bool LoaderTableManager_IsEnabled(uint8_t app_id)
+{
+    for (uint8_t bank_id = 0; bank_id < 2; bank_id++)
+    {
+        loader_table_entry_t entry;
+        if (LoaderTableManager_GetEntry(app_id, bank_id, &entry))
+        {
+            if (entry.is_enabled)
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/*
+ * AppConfig兼容API - 检查APP是否为双Bank模式
+ */
+bool LoaderTableManager_IsDualBank(uint8_t app_id)
+{
+    for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
+    {
+        if (loader_table[i].f.app_id == app_id && loader_table[i].f.bank_id == 0)
+        {
+            return (loader_table[i].f.is_dual_bank == 1);
+        }
+    }
+    return false;
+}
+
+/*
+ * AppConfig兼容API - 获取APP的Bank数量
+ */
+uint8_t LoaderTableManager_GetBankCount(uint8_t app_id)
+{
+    uint8_t count = 0;
+
+    for (uint8_t bank_id = 0; bank_id < 2; bank_id++)
+    {
+        loader_table_entry_t entry;
+        if (LoaderTableManager_GetEntry(app_id, bank_id, &entry))
+        {
+            if (entry.is_enabled)
+            {
+                count++;
+            }
+        }
+    }
+
+    return count;
+}
+
+/*
+ * AppConfig兼容API - 获取APP的Bank地址
+ */
+uint32_t LoaderTableManager_GetBankAddress(uint8_t app_id, uint8_t bank_id)
+{
+    loader_table_entry_t entry;
+
+    if (!LoaderTableManager_GetEntry(app_id, bank_id, &entry))
+    {
+        return 0;
+    }
+
+    if (!entry.is_enabled)
+    {
+        return 0;
+    }
+
+    return entry.dst_addr;
+}
+
+/*
+ * AppConfig兼容API - 获取下一个启用的APP ID
+ */
+uint8_t LoaderTableManager_GetNextEnabledApp(uint8_t current_app_id)
+{
+    if (current_app_id == 0 || current_app_id > 5)
+    {
+        for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
+        {
+            if (loader_table[i].f.bank_id == 0 && loader_table[i].f.enable_flag == TABLE_ENABLE)
+            {
+                return loader_table[i].f.app_id;
+            }
+        }
+        return 0;
+    }
+
+    for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
+    {
+        if (loader_table[i].f.app_id == current_app_id && loader_table[i].f.bank_id == 0)
+        {
+            for (uint8_t j = i + 1; j < TABLE_ENTRY_NUM; j++)
+            {
+                if (loader_table[j].f.bank_id == 0 && loader_table[j].f.enable_flag == TABLE_ENABLE)
+                {
+                    return loader_table[j].f.app_id;
+                }
+            }
+            break;
+        }
+    }
+
+    for (uint8_t i = 0; i < TABLE_ENTRY_NUM; i++)
+    {
+        if (loader_table[i].f.bank_id == 0 && loader_table[i].f.enable_flag == TABLE_ENABLE)
+        {
+            return loader_table[i].f.app_id;
+        }
+    }
+
+    return 0;
 }

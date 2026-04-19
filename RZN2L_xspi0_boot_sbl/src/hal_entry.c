@@ -1,13 +1,11 @@
 #include "hal_data.h"
 #include "loader_table.h"
 #include "crc32_table.h"
-#include "sbl_params.h"
 #include "sbl_boot_params.h"
 #include "flash_config.h"
 #include "log.h"
 
 // 新增模块头文件
-#include "app_config.h"
 #include "bank_config.h"
 #include "loader_table_manager.h"
 #include "app_jump.h"  // SBL专用APP跳转模块
@@ -151,11 +149,10 @@ void hal_entry(void)
     // 初始化所有模块
     LOG_INFO("=== SBL Module Initialization ===\n");
     SblBootParams_Init();           // SBL Boot Params 初始化
-    AppConfig_Init();               // APP 配置管理初始化
     BankConfig_Init();              // Bank 配置管理初始化
-    LoaderTableManager_Init();      // Loader loader_table 管理初始化
+    LoaderTableManager_Init();      // Loader loader_table 管理初始化 (统一配置)
     AppJump_Init();                 // APP 跳转模块初始化
-    sblCheckBootParams();           // 检查 Boot Params
+
 
     LOG_INFO("=== SBL Boot Process ===\n");
     LOG_INFO("SBL Version: %s\n", RZN2_BOOT_VERSION);

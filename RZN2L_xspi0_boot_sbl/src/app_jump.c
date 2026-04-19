@@ -6,7 +6,6 @@
  */
 
 #include "app_jump.h"
-#include "app_config.h"
 #include "bank_config.h"
 #include "loader_table_manager.h"
 #include "sbl_boot_params.h"
@@ -102,7 +101,7 @@ app_jump_result_t AppJump_ToApp(uint8_t app_id, uint8_t bank_id)
     LOG_INFO("Jump to APP%d Bank%d\n", app_id, bank_id);
 
     // 验证APP ID
-    if (!AppConfig_IsValidAppId(app_id))
+    if (!LoaderTableManager_IsValidAppId(app_id))
     {
         return APP_JUMP_FAIL_INVALID_APP;
     }
@@ -114,7 +113,7 @@ app_jump_result_t AppJump_ToApp(uint8_t app_id, uint8_t bank_id)
     }
 
     // 检查APP是否启用
-    if (!AppConfig_IsEnabled(app_id))
+    if (!LoaderTableManager_IsEnabled(app_id))
     {
         return APP_JUMP_FAIL_NOT_ENABLED;
     }
@@ -190,13 +189,13 @@ app_jump_result_t AppJump_ToAppAuto(uint8_t app_id)
     LOG_INFO("Jump to APP%d (auto select bank)\n", app_id);
 
     // 验证APP ID
-    if (!AppConfig_IsValidAppId(app_id))
+    if (!LoaderTableManager_IsValidAppId(app_id))
     {
         return APP_JUMP_FAIL_INVALID_APP;
     }
 
     // 检查APP是否启用
-    if (!AppConfig_IsEnabled(app_id))
+    if (!LoaderTableManager_IsEnabled(app_id))
     {
         return APP_JUMP_FAIL_NOT_ENABLED;
     }
@@ -225,16 +224,9 @@ app_jump_result_t AppJump_ToNextApp(void)
         return APP_JUMP_FAIL_INVALID_APP;
     }
 
-    uint8_t target_app = params.target_app;
+    uint8_t target_app = params.f.target_app;
 
-    // 如果没有指定目标APP，使用当前APP
-    if (target_app == 0 || target_app == 0xFF)
-    {
-        // 获取第一个启用的APP
-        target_app = AppConfig_GetNextEnabledApp(0);
-    }
-
-    if (target_app == 0)
+    if (target_app < APP1_ID || target_app > APP5_ID)
     {
         LOG_ERROR("No enabled APP found\n");
         return APP_JUMP_FAIL_NO_VALID_BANK;

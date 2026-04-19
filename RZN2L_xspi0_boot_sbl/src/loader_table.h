@@ -23,22 +23,32 @@
 #include "bsp_api.h"
 
 
-
 /* Value for loader_table */
-#define TABLE_ENTRY_NUM                  (4)
+#define TABLE_ENTRY_NUM                  (10)
 #define TABLE_ENABLE                     (1)
 #define TABLE_DISABLE                    (0)
 #define TABLE_INVALID_VALUE              (0xffffffff)
 
-/* loader_table_t definition */
-typedef struct {
-    uint32_t * src;           // Flash源地址
-    uint32_t * dst;           // RAM目标地址
-    uint32_t size;            // 大小
-    uint32_t enable_flag;     // 启用标志
-    uint8_t app_id;           // APP ID: 1-5
-    uint8_t bank_id;          // Bank ID: 0=Bank0, 1=Bank1, 0xFF=Invalid
-    uint8_t reserved[2];       // 保留对齐
+
+/* loader_table_t definition (64 bytes per entry) */
+#define LOADER_TABLE_SIZE  64
+
+typedef struct __attribute__((packed)) {
+    uint32_t * src;
+    uint32_t * dst;
+    uint32_t size;
+    uint32_t enable_flag;
+    uint8_t app_id;
+    uint8_t bank_id;
+    uint8_t is_dual_bank;
+} loader_table_fields_t;
+
+typedef struct __attribute__((packed)) {
+    loader_table_fields_t f;
+    uint8_t reserved[LOADER_TABLE_SIZE - sizeof(loader_table_fields_t)];
 } loader_table_t;
+
+/* GCC/Clang 静态断言 */
+_Static_assert(sizeof(loader_table_t) == LOADER_TABLE_SIZE, "loader_table_t must be 64 bytes");
 
 #endif /* LOADER_TABLE_H_ */

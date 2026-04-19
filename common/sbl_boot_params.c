@@ -7,7 +7,7 @@
  *  SBL Boot Params - SBL (Secondary Boot Loader) 启动参数管理
  *  注意: 此模块用于 SBL (二级引导)，区别于 ROM Boot (一级引导)
  */
-
+#include "ecat_foe_data.h"
 #include "sbl_boot_params.h"
 #include "flash_config.h"
 #include "crc32_table.h"
@@ -25,52 +25,146 @@ extern CRC_Context ctx;
  */
 void SblBootParams_Init(void)
 {
-    sbl_boot_params_t params;
+    sbl_boot_params_t boot_params;
 
-    // 尝试读取现有的 SBL Boot Params
-    if (SblBootParams_Read(&params))
+    // 1. 读取 SBL Boot Params
+    if (!SblBootParams_Read(&boot_params))
     {
-        // 验证CRC
-        if (SblBootParams_ValidateCRC(&params))
-        {
-            LOG_INFO("SBL Boot Params already initialized and valid\n");
-            return;
-        }
+        LOG_ERROR("Failed to read SBL Boot Params!\n");
+        return;
     }
 
-    // SBL Boot Params 无效或不存在，初始化默认值
-    LOG_INFO("Initializing SBL Boot Params with default values\n");
-
-    // 清零结构
-    memset(&params, 0, sizeof(sbl_boot_params_t));
-
-    // 设置默认值
-    params.header_app[0] = 'A';
-    params.header_app[1] = 'P';
-    params.header_app[2] = 'P';
-    params.header_version = 0x00010000;  // 版本 1.0.0
-    params.target_app = 1;               // 默认跳转到 APP1
-    params.current_bank = BANK_0;        // 当前运行 Bank0
-    params.target_bank = 0xFF;           // 自动选择 Bank
-    params.version_check_enable = SBL_BOOT_PARAMS_VERSION_CHECK_ENABLE;
-
-    // Identify 信息 (默认值)
-    params.vendor_id = 0;
-    params.product_code = 0;
-    params.revision_number = 0;
-    params.serial_number = 0;
-
-    // 计算并设置 CRC
-    SblBootParams_UpdateCRC(&params);
-
-    // 写入 Flash
-    if (SblBootParams_Write(&params))
+    // 2. 验证CRC
+    if (!SblBootParams_ValidateCRC(&boot_params))
     {
-        LOG_INFO("SBL Boot Params initialized successfully\n");
+        LOG_ERROR("SBL Boot Params CRC check failed!\n");
+
+#if APP1_ENABLE
+        // 3. 检查Bank0和Bank1的固件有效性
+        bool bank0_valid = false;
+        bool bank1_valid = false;
+
+        // 检查Bank0
+        uint32_t bank0_addr = FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET;
+        app_header_t *header0 = (app_header_t *)bank0_addr;
+
+        if (memcmp(header0->header_app, "APP", 3) == 0)
+        {
+            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank0_addr, (int)(header0->header_len - 4));
+
+            uint32_t crc_flash;
+            memcpy(&crc_flash, (uint8_t *)(bank0_addr + header0->header_len - 4), sizeof(uint32_t));
+
+            if (crcCalRet == crc_flash)
+            {
+                bank0_valid = true;
+                LOG_INFO("Bank0 firmware valid: Version=0x%08X\n", header0->header_version);
+            }
+            else
+            {
+                LOG_ERROR("Bank0 CRC check failed!\n");
+            }
+        }
+
+        // 检查Bank1
+        uint32_t bank1_addr = FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET;
+        app_header_t *header1 = (app_header_t *)bank1_addr;
+
+        if (memcmp(header1->header_app, "APP", 3) == 0)
+        {
+            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
+
+            uint32_t crc_flash;
+            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - 4), sizeof(uint32_t));
+
+            if (crcCalRet == crc_flash)
+            {
+                bank1_valid = true;
+                LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);
+            }
+            else
+            {
+                LOG_ERROR("Bank1 CRC check failed!\n");
+            }
+        }
+
+        // 4. 选择有效的Bank
+        uint8_t boot_bank = BANK_UNKNOWN;
+        if (bank0_valid && bank1_valid)
+        {
+            // 两个Bank都有效，选择版本号更高的
+            boot_bank = (header0->header_version >= header1->header_version) ? BANK_0 : BANK_1;
+        }
+        else if (bank0_valid)
+        {
+            boot_bank = BANK_0;
+        }
+        else if (bank1_valid)
+        {
+            boot_bank = BANK_1;
+        }
+        else
+        {
+            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
+            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
+            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
+
+        }
+
+        if (bank0_valid || bank1_valid)
+        {
+            // 5. 构造新的 SBL Boot Params
+            sbl_boot_params_t new_params;
+            memset(&new_params, 0, sizeof(sbl_boot_params_t));
+
+            app_header_t *selected_header = (boot_bank == BANK_0) ? header0 : header1;
+
+            memcpy(new_params.f.header_app, selected_header->header_app, 3);
+            new_params.f.header_version = selected_header->header_version;
+            new_params.f.target_app = APP1_ID;
+            new_params.f.current_bank = boot_bank;
+            new_params.f.target_bank = boot_bank;
+            new_params.f.version_check_enable = SBL_BOOT_PARAMS_VERSION_CHECK_ENABLE;
+            new_params.f.vendor_id = selected_header->dword[0];
+            new_params.f.product_code = selected_header->dword[1];
+            new_params.f.revision_number = selected_header->dword[2];
+            new_params.f.serial_number = selected_header->dword[3];
+
+            SblBootParams_UpdateCRC(&new_params);
+
+            // 6. 写入 SBL Boot Params
+            if (!SblBootParams_Write(&new_params))
+            {
+                LOG_ERROR("Failed to write SBL Boot Params!\n");
+                return;
+            }
+
+            LOG_INFO("SBL Boot Params reconstructed: Bank=%d, Version=0x%08X, new_params.f.version_check_enable=%d\n",
+                     boot_bank, new_params.f.header_version,new_params.f.version_check_enable);
+        }
+#endif//#if APP1_ENABLE
+
+#if APP2_ENABLE
+
+#endif//#if APP2_ENABLE
+
+#if APP3_ENABLE
+
+#endif//#if APP3_ENABLE
+
+#if APP4_ENABLE
+
+#endif//#if APP4_ENABLE
+
+#if APP5_ENABLE
+
+#endif//#if APP5_ENABLE
+
     }
     else
     {
-        LOG_ERROR("Failed to initialize SBL Boot Params\n");
+        LOG_INFO("SBL Boot Params OK: Bank=%d, Version=0x%08X, new_params.f.version_check_enable=%d\n",
+                 boot_params.f.current_bank, boot_params.f.header_version,boot_params.f.version_check_enable);
     }
 }
 
@@ -260,7 +354,7 @@ bool SblBootParams_ValidateCRC(const sbl_boot_params_t *params)
                                       (char *)params,
                                       sizeof(sbl_boot_params_t) - 4);
 
-    return (calc_crc == params->crc32);
+    return (calc_crc == params->f.crc32);
 }
 
 /*
@@ -272,7 +366,7 @@ void SblBootParams_UpdateCRC(sbl_boot_params_t *params)
         return;
 
     // 计算CRC (不包括最后的crc32字段)
-    params->crc32 = CRC_Calculate(&ctx,
+    params->f.crc32 = CRC_Calculate(&ctx,
                                   (char *)params,
                                   sizeof(sbl_boot_params_t) - 4);
 }
@@ -293,64 +387,12 @@ uint8_t SblBootParams_GetCurrentBank(void)
         return BANK_UNKNOWN;
     }
 
-    return params.current_bank;
+    return params.f.current_bank;
 }
 
-/*
- * 获取目标APP
- */
-uint8_t SblBootParams_GetTargetApp(void)
-{
-    sbl_boot_params_t params;
 
-    if (!SblBootParams_Read(&params))
-        return 0;
 
-    if (!SblBootParams_ValidateCRC(&params))
-    {
-        LOG_ERROR("SBL Boot Params CRC check failed!\n");
-        return 0;
-    }
 
-    return params.target_app;
-}
-
-/*
- * 设置目标APP
- */
-bool SblBootParams_SetTargetApp(uint8_t app_id)
-{
-    // 验证APP ID
-    if (app_id < 1 || app_id > 5)
-    {
-        LOG_ERROR("Invalid APP ID: %d\n", app_id);
-        return false;
-    }
-
-    sbl_boot_params_t params;
-
-    if (!SblBootParams_Read(&params))
-    {
-        LOG_ERROR("Failed to read SBL Boot Params\n");
-        return false;
-    }
-
-    // 设置目标APP
-    params.target_app = app_id;
-
-    // 更新CRC
-    SblBootParams_UpdateCRC(&params);
-
-    // 写回
-    if (!SblBootParams_Write(&params))
-    {
-        LOG_ERROR("Failed to write SBL Boot Params\n");
-        return false;
-    }
-
-    LOG_INFO("Target APP set to: APP%d\n", app_id);
-    return true;
-}
 
 /*
  * 获取当前固件版本号
@@ -368,7 +410,7 @@ uint32_t SblBootParams_GetCurrentVersion(void)
         return 0;
     }
 
-    return params.header_version;
+    return params.f.header_version;
 }
 
 /*
@@ -389,23 +431,23 @@ bool SblBootParams_CheckVersionUpgrade(uint32_t new_version)
     }
 
     // 如果版本号检查被禁用，则允许升级
-    if (params.version_check_enable == 0)
+    if (params.f.version_check_enable == 0)
     {
         LOG_INFO("Version check disabled, allow upgrade.\n");
         return true;
     }
 
     // 检查新版本号是否大于当前版本号
-    if (new_version > params.header_version)
+    if (new_version > params.f.header_version)
     {
         LOG_INFO("Version check passed: new=0x%08X > current=0x%08X\n",
-                 new_version, params.header_version);
+                 new_version, params.f.header_version);
         return true;
     }
     else
     {
         LOG_ERROR("Version check failed: new=0x%08X <= current=0x%08X\n",
-                  new_version, params.header_version);
+                  new_version, params.f.header_version);
         return false;
     }
 }
