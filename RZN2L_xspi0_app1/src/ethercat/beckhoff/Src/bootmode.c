@@ -55,63 +55,16 @@ V4.20: File created
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
 
 
-// ============================================================================
-// APP1固件版本号定义 (易读、易修改、易比较)
-// ============================================================================
 
-#ifndef APP1_VERSION_MAJOR
-#define APP1_VERSION_MAJOR  1
-#endif
-
-#ifndef APP1_VERSION_MINOR
-#define APP1_VERSION_MINOR  2
-#endif
-
-#ifndef APP1_VERSION_PATCH
-#define APP1_VERSION_PATCH  3
-#endif
-
-#ifndef APP1_VERSION_REVISION
-#define APP1_VERSION_REVISION  0
-#endif
-
-#define APP1_VERSION ((APP1_VERSION_MAJOR << 24) | (APP1_VERSION_MINOR << 16) | (APP1_VERSION_PATCH << 8) | APP1_VERSION_REVISION)
-
-
-
-#ifndef APP1_STR_1
-#define APP1_STR_1  'A'
-#endif
-
-#ifndef APP1_STR_2
-#define APP1_STR_2  'P'
-#endif
-
-#ifndef APP1_STR_3
-#define APP1_STR_3  'P'   
-#endif
-
-#ifndef APP1_STR_4
-#define APP1_STR_4  '1'
-#endif  
-// 用字符数组方式拼接（最后加'\0'变成字符串）
-#define APP1_STR_DEFAULT ((const char[]){APP1_STR_1, APP1_STR_2, APP1_STR_3, APP1_STR_4, '\0'})
-#ifndef APP1_STR
-#define APP1_STR APP1_STR_DEFAULT
-#endif
-
-static const char app1_str[] = APP1_STR;  // "APP1"
-
-
+extern CRC_Context ctx;
 
 
 static ota_handle_t ota_handle = {0};
 static volatile uint64_t beginTime = 0;
 static volatile uint64_t endTime = 0;
-CRC_Context ctx;
 static BOOL   bReBoot;
 
-BSP_DONT_REMOVE const uint8_t g_header[SBL_BOOT_PARAMS_SIZE] BSP_PLACE_IN_SECTION(".header") = {
+BSP_DONT_REMOVE const uint8_t g_app1_header[APP1_HEADER_BUF_LENS] BSP_PLACE_IN_SECTION(".app1_header") = {
     APP1_STR_1, APP1_STR_2, APP1_STR_3, APP1_STR_4, // "APP1"
     (APP1_VERSION >> 0) & 0xFF,  // Patch
     (APP1_VERSION >> 8) & 0xFF,  // Minor
@@ -119,7 +72,7 @@ BSP_DONT_REMOVE const uint8_t g_header[SBL_BOOT_PARAMS_SIZE] BSP_PLACE_IN_SECTIO
     (APP1_VERSION >> 24) & 0xFF  // Revision
 };
 
-BSP_DONT_REMOVE const uint32_t g_identify[4] BSP_PLACE_IN_SECTION(".identify") = {(VENDOR_ID), (PRODUCT_CODE), (REVISION_NUMBER), (SERIAL_NUMBER)};
+BSP_DONT_REMOVE const uint32_t g_app1_identify[APP1_IDENTIFY_BUF_LENS] BSP_PLACE_IN_SECTION(".app1_identify") = {(VENDOR_ID), (PRODUCT_CODE), (REVISION_NUMBER), (SERIAL_NUMBER)};
 
 
 static void norFlashPageProgram(uint8_t* addr, uint8_t* data, uint16_t len);
@@ -158,7 +111,7 @@ void BL_Start( UINT8 State)
 {
     (void)State;
 
-    CRC_Init(&ctx, 0xFFFFFFFF, 0xEDB88320);  // 标准CRC32参数
+    //CRC_Init(&ctx, 0xFFFFFFFF, 0xEDB88320);  // 标准CRC32参数
 
     // 初始化Bank检测
     BankDetection_Init();
@@ -230,7 +183,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         app_header_t *fw_header = (app_header_t *)pData;
 
         // 1. 验证固件魔数 "APP1"
-        if (memcmp(fw_header->header_app, app1_str, strlen(app1_str)) != 0)
+        if (memcmp(fw_header->header_app, APP1_STR, strlen(APP1_STR)) != 0)
         {
             LOG_ERROR("Invalid firmware magic! Expected 'APP1', got '%c%c%c%c'\n",
                       fw_header->header_app[0], fw_header->header_app[1], fw_header->header_app[2], fw_header->header_app[3]);
@@ -366,7 +319,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
         memset(&sbl_boot_params, 0, sizeof(sbl_boot_params_t));
 
         // 填充Boot Params
-        memcpy(sbl_boot_params.f.header_app, app1_str, strlen(app1_str));  // "APP1"
+        memcpy(sbl_boot_params.f.header_app, APP1_STR, strlen(APP1_STR));  // "APP1"
         sbl_boot_params.f.header_version = ota_handle.current_header.header_version;
         sbl_boot_params.f.target_app = APP1_ID;  // 1:APP1
         sbl_boot_params.f.current_bank = ota_handle.target_bank;  // 下次启动的Bank

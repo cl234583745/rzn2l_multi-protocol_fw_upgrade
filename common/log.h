@@ -40,7 +40,7 @@ static inline int log_printf(const char *fmt, ...)
 
 // ---------- 全局总开关（默认 INFO） ----------
 #ifndef GLOBAL_LOG_LEVEL
-#define GLOBAL_LOG_LEVEL LOG_LEVEL_INFO
+#define GLOBAL_LOG_LEVEL LOG_LEVEL_DEBUG
 #endif
 
 // ---------- 辅助宏：判断全局级别是否 ≥ 指定级别 ----------

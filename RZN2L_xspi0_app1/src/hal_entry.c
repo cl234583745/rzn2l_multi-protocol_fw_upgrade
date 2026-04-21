@@ -3,6 +3,7 @@
 #include "ecatappl.h"
 #include "ecatslv.h"
 #include "applInterface.h"
+#include "sbl_boot_params.h"
 
 #if (CiA402_SAMPLE_APPLICATION == 1)
 #include "cia402appl.h"
@@ -13,11 +14,12 @@
 //#include "sio_char.h"
 #include <stdio.h>
 #include "log.h"
+#include "crc32_table.h"
 
 #define RZN2_APP1_VERSION   ("0.1.0")
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
 
-
+CRC_Context ctx;
 
 FSP_CPP_HEADER
 void R_BSP_WarmStart(bsp_warm_start_event_t event)
@@ -147,7 +149,7 @@ void hal_entry(void)
     handle_error(err);
     g_uart0.p_api->write(g_uart0.p_ctrl, (uint8_t const *)"\n\nApp start!\n\n", strlen("App start!\n"));
     R_BSP_SoftwareDelay(100, BSP_DELAY_UNITS_MILLISECONDS);
-    LOG_INFO("App start! APP1 Version:%s\n", RZN2_APP1_VERSION);
+    LOG_INFO("App1 start! APP1 Version:%s\n", RZN2_APP1_VERSION);
 
     LOG_INFO("date:%s\ntime:%s\nfile:%s\nfunc:%s,line:%d\nhello world!\n", __DATE__, __TIME__, __FILE__, __FUNCTION__, __LINE__);
 
@@ -158,6 +160,7 @@ void hal_entry(void)
     /* Open the QSPI instance */
     err = R_XSPI_QSPI_Open(&g_qspi0_ctrl, &g_qspi0_cfg);
     handle_error(err);
+    CRC_Init(&ctx, 0xFFFFFFFF, 0xEDB88320);  // 标准CRC32参数
 
 #if defined(BOARD_RZT2M_RSK) && (BSP_CFG_CORE_CR52 == 1)
     /* Open the shared memory driver. */
@@ -190,28 +193,17 @@ void hal_entry(void)
 
     /* Print that the EtherCAT Sample starts */
 #if defined(BOARD_RZT2M_RSK)
-#if (BANK == 0)
-    char start_messege[] = "RZ/T2M EtherCAT sample program starts on BANK0.\r\n";
-#elif (BANK == 1)
-    char start_messege[] = "RZ/T2M EtherCAT sample program starts on BANK1.\r\n";
-#endif
+    LOG_INFO("RZT2M RSK EtherCAT Sample Start!\n");
 #endif
 #if defined(BOARD_RZT2L_RSK)
-#if (BANK == 0)
-    char start_messege[] = "RZ/T2L EtherCAT sample program starts on BANK0.\r\n";
-#elif (BANK == 1)
-    char start_messege[] = "RZ/T2L EtherCAT sample program starts on BANK1.\r\n";
-#endif
+    LOG_INFO("RZT2L RSK EtherCAT Sample Start!\n");
 #endif
 #if defined(BOARD_RZN2L_RSK)
-#if (BANK == 0)
-    char start_messege[] = "RZ/N2L EtherCAT sample program starts on BANK0.\r\n";
-#elif (BANK == 1)
-    char start_messege[] = "RZ/N2L EtherCAT sample program starts on BANK1.\r\n";
+    uint8_t app = SblBootParams_GetCurrentApp();
+    uint8_t bank = SblBootParams_GetCurrentBank();
+    uint32_t ver = SblBootParams_GetCurrentVersion();
+    LOG_INFO("RZN2L APP%d, Bank%d, Version: %08X\n\n", app, bank, ver);
 #endif
-#endif
-    /* Send massage to PC by UART communication. */
-    LOG_INFO("%s",start_messege);
 
     /* Initilize the stack */
     MainInit();

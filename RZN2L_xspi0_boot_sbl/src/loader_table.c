@@ -23,7 +23,7 @@
 
 
 /*
- * loader_table (64 bytes per entry)
+ * loader_table (256 bytes per entry)
  */
 const loader_table_t loader_table[TABLE_ENTRY_NUM] BSP_PLACE_IN_SECTION("CPU0_LOADER_TABLE") =
 {

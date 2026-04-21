@@ -104,12 +104,12 @@ MEMORY
 SECTIONS
 {
 
-    .APP1_BANK0_IMAGE_APP_RAM 0x10010000 : AT (0x10010000)
+    .APP1_BANK0_IMAGE_APP_RAM APP_RAM_START : AT (APP_RAM_START)
     {
         APP1_BANK0_IMAGE_APP_RAM_start = .;
         KEEP(*(APP1_BANK0_IMAGE_RAM))
     }
-    .APP1_BANK1_IMAGE_APP_RAM 0x10010000 : AT (0x10010000)
+    .APP1_BANK1_IMAGE_APP_RAM APP_RAM_START : AT (APP_RAM_START)
     {
         APP1_BANK1_IMAGE_APP_RAM_start = .;
         KEEP(*(APP1_BANK1_IMAGE_RAM))
@@ -137,13 +137,13 @@ SECTIONS
  */
 
 
-    .loader_param LOADER_PARAM_ADDRESS : AT (LOADER_PARAM_ADDRESS)
+    .loader_param LOADER_PARAM_ADDR : AT (LOADER_PARAM_ADDR)
     {
         LOADER_PARAM_start = .;
         KEEP(*(.loader_param))
         LOADER_PARAM_end = .;
     } > xSPI0_CS0_SPACE
-    .flash_contents FLASH_CONTENTS_ADDRESS : AT (FLASH_CONTENTS_ADDRESS)
+    .flash_contents FLASH_CONTENTS_ADDR : AT (FLASH_CONTENTS_ADDR)
     {
         _mtext = .;
         . = . + (_text_end - _text_start);
@@ -161,7 +161,7 @@ SECTIONS
         KEEP(*(CPU0_LOADER_TABLE))
         SBL_LOADER_TABLE_end = .;        
     } > xSPI0_CS0_SPACE
-    .sbl_boot_params_backup SBL_BOOT_PARAMS_BACKUP_ADDR : AT (SBL_BOOT_PARAMS_BACKUP_ADDR)
+    .sbl_boot_params_backup SBL_BOOT_PARAMS_ADDR_BACKUP : AT (SBL_BOOT_PARAMS_ADDR_BACKUP)
     {
         SBL_BOOT_PARAMS_BACKUP_start = .;
         KEEP(*(.sbl_boot_params_backup))

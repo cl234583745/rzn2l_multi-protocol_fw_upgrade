@@ -21,7 +21,7 @@
 #define LOADER_TABLE_H_
 
 #include "bsp_api.h"
-
+#include "flash_config.h"
 
 /* Value for loader_table */
 #define TABLE_ENTRY_NUM                  (10)
@@ -30,8 +30,7 @@
 #define TABLE_INVALID_VALUE              (0xffffffff)
 
 
-/* loader_table_t definition (64 bytes per entry) */
-#define LOADER_TABLE_SIZE  64
+
 
 typedef struct __attribute__((packed)) {
     uint32_t * src;

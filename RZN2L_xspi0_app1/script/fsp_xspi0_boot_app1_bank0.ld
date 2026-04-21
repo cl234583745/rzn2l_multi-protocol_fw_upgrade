@@ -101,14 +101,18 @@ MEMORY
 SECTIONS
 {
 /* Flash layout imported from flash_layout.ld */
-    .header_param APP1_BANK0_ADDR : AT (APP1_BANK0_ADDR)
+    .app1_header_param APP1_HEADER_ADDR : AT (APP1_HEADER_ADDR)
     {
-        KEEP(*(.header))
+        KEEP(*(.app1_header))
     } > xSPI0_CS0_SPACE
-    .identify_param APP1_IDENTIFY_ADDR : AT (APP1_IDENTIFY_ADDR)
+    
+
+    .app1_identify_param APP1_IDENTIFY_ADDR : AT (APP1_IDENTIFY_ADDR)
     {
-        KEEP(*(.identify))
+        KEEP(*(.app1_identify))
     } > xSPI0_CS0_SPACE
+    
+
     .flash_contents APP1_CODE_ADDR : AT (APP1_CODE_ADDR)
     {
         _mtext = .;

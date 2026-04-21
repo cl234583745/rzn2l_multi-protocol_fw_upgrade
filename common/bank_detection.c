@@ -97,10 +97,18 @@ bool BankDetection_IsTargetBankValid(uint8_t target_bank, uint8_t current_bank)
  */
 uint32_t BankDetection_GetBankAddress(uint8_t bank)
 {
+	uint32_t addr = 0;
+
     if (bank == BANK_0)
-        return FW_UP_BANK0_ADDR;
+    {
+    	addr = (uint32_t)APP1_BANK0_BASE_ADDR;
+        return addr;
+    }
     else if (bank == BANK_1)
-        return FW_UP_BANK1_ADDR;
+    {
+		addr = (uint32_t)APP1_BANK1_BASE_ADDR;
+		return addr;
+	}
     else
         return 0;
 }

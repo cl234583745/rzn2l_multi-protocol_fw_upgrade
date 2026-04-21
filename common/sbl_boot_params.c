@@ -31,7 +31,7 @@ void SblBootParams_Init(void)
     if (!SblBootParams_Read(&boot_params))
     {
         LOG_ERROR("Failed to read SBL Boot Params!\n");
-        return;
+        //return;
     }
 
     // 2. 验证CRC
@@ -40,15 +40,19 @@ void SblBootParams_Init(void)
         LOG_ERROR("SBL Boot Params CRC check failed!\n");
 
 #if APP1_ENABLE
+        //static char app1_str[] = {"APP1"};
         // 3. 检查Bank0和Bank1的固件有效性
         bool bank0_valid = false;
         bool bank1_valid = false;
 
         // 检查Bank0
-        uint32_t bank0_addr = FW_UP_BANK0_ADDR - FW_UP_MIRROR_OFFSET;
+        uint32_t bank0_addr = (uint32_t)APP1_BANK0_BASE_ADDR - FW_UP_MIRROR_OFFSET;
         app_header_t *header0 = (app_header_t *)bank0_addr;
 
-        if (memcmp(header0->header_app, "APP", 3) == 0)
+        LOG_DEBUG("APP1_BANK0_BASE_ADDR=%08X %08X %08X\n", APP1_BANK0_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank0_addr);
+
+
+        if (memcmp(header0->header_app, APP1_STR, strlen(APP1_STR)) == 0)
         {
             uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank0_addr, (int)(header0->header_len - 4));
 
@@ -67,15 +71,18 @@ void SblBootParams_Init(void)
         }
 
         // 检查Bank1
-        uint32_t bank1_addr = FW_UP_BANK1_ADDR - FW_UP_MIRROR_OFFSET;
+        uint32_t bank1_addr = (uint32_t)APP1_BANK1_BASE_ADDR - FW_UP_MIRROR_OFFSET;
         app_header_t *header1 = (app_header_t *)bank1_addr;
 
-        if (memcmp(header1->header_app, "APP", 3) == 0)
+        LOG_DEBUG("APP1_BANK1_BASE_ADDR=%08X %08X %08X\n", APP1_BANK1_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank1_addr);
+
+
+        if (memcmp(header1->header_app, APP1_STR, strlen(APP1_STR)) == 0)
         {
             uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
 
             uint32_t crc_flash;
-            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - 4), sizeof(uint32_t));
+            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - sizeof(uint32_t)), sizeof(uint32_t));
 
             if (crcCalRet == crc_flash)
             {
@@ -119,7 +126,7 @@ void SblBootParams_Init(void)
 
             app_header_t *selected_header = (boot_bank == BANK_0) ? header0 : header1;
 
-            memcpy(new_params.f.header_app, selected_header->header_app, 3);
+            memcpy(new_params.f.header_app, selected_header->header_app, strlen(APP1_STR));
             new_params.f.header_version = selected_header->header_version;
             new_params.f.target_app = APP1_ID;
             new_params.f.current_bank = boot_bank;
@@ -178,11 +185,11 @@ bool SblBootParams_Read(sbl_boot_params_t *params)
         return false;
 
     // 使用flash_config.h中定义的地址
-    #define MAIN_PARAMS_ADDR   SBL_MAIN_PARAMS_ADDR
-    #define BACKUP_PARAMS_ADDR SBL_BACKUP_PARAMS_ADDR
+	uint32_t sblBootParamsMirror = (uint32_t)SBL_BOOT_PARAMS_ADDR - FW_UP_MIRROR_OFFSET;
 
+    LOG_DEBUG("SBL_BOOT_PARAMS_ADDR=%08X %08X %08X\n", SBL_BOOT_PARAMS_ADDR, FW_UP_MIRROR_OFFSET, sblBootParamsMirror);
     // 1. 先读取主区域
-    memcpy(params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+    memcpy(params, (void *)(sblBootParamsMirror), sizeof(sbl_boot_params_t));
 
     // 2. 验证 CRC
     if (SblBootParams_ValidateCRC(params))
@@ -192,7 +199,13 @@ bool SblBootParams_Read(sbl_boot_params_t *params)
 
     // 3. 主区域无效，尝试读取备份区
     LOG_WARN("SBL Boot Params main region invalid, trying backup...\n");
-    memcpy(params, (uint8_t *)BACKUP_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+
+    // 使用flash_config.h中定义的地址
+	uint32_t sblBootParamsBackupMirror = (uint32_t)SBL_BOOT_PARAMS_ADDR_BACKUP - FW_UP_MIRROR_OFFSET;
+
+	LOG_DEBUG("SBL_BOOT_PARAMS_ADDR_BACKUP=%08X %08X %08X\n", SBL_BOOT_PARAMS_ADDR_BACKUP, FW_UP_MIRROR_OFFSET, sblBootParamsBackupMirror);
+	// 1. 先读取主区域
+	memcpy(params, (void *)(sblBootParamsBackupMirror), sizeof(sbl_boot_params_t));
 
     if (SblBootParams_ValidateCRC(params))
     {
@@ -223,13 +236,15 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
     spi_flash_status_t status_erase;
 
     // 使用flash_config.h中定义的地址
-    #define MAIN_PARAMS_ADDR   SBL_MAIN_PARAMS_ADDR
-    #define BACKUP_PARAMS_ADDR SBL_BACKUP_PARAMS_ADDR
+    uint32_t sblBootParams = (uint32_t)SBL_BOOT_PARAMS_ADDR;
+	uint32_t sblBootParamsMirror = (uint32_t)SBL_BOOT_PARAMS_ADDR - FW_UP_MIRROR_OFFSET;
+
+	LOG_DEBUG("SBL_BOOT_PARAMS_ADDR=%08X %08X %08X\n", SBL_BOOT_PARAMS_ADDR, FW_UP_MIRROR_OFFSET, sblBootParamsMirror);
 
     // 1. 先读取现有 Boot Params (用于失败恢复)
     sbl_boot_params_t old_params;
     bool has_backup = false;
-    memcpy(&old_params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+    memcpy(&old_params, (void *)(sblBootParamsMirror), sizeof(sbl_boot_params_t));
     if (SblBootParams_ValidateCRC(&old_params))
     {
         has_backup = true;
@@ -237,7 +252,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
     // 2. 擦除主区域
     R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
-                      (uint8_t *)MAIN_PARAMS_ADDR,
+                      (uint8_t *)sblBootParams,
                       FW_UP_BOOT_PARAMS_SIZE);
 
     do {
@@ -256,7 +271,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
         R_XSPI_QSPI_Write(&g_qspi0_ctrl,
                           data + offset,
-                          (uint8_t *)(MAIN_PARAMS_ADDR + offset),
+                          (uint8_t *)(sblBootParams + offset),
                           write_size);
 
         do {
@@ -264,11 +279,13 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
         } while (status_erase.write_in_progress);
 
         offset += write_size;
+
+        LOG_DEBUG("total_size=%08X offset=%08X write_size=%08X\n", total_size, offset, write_size);
     }
 
     // 4. 验证写入
     sbl_boot_params_t verify_params;
-    memcpy(&verify_params, (uint8_t *)MAIN_PARAMS_ADDR, sizeof(sbl_boot_params_t));
+    memcpy(&verify_params, (void *)(sblBootParamsMirror), sizeof(sbl_boot_params_t));
     if (!SblBootParams_ValidateCRC(&verify_params))
     {
         LOG_ERROR("SblBootParams_Write: Verify failed!\n");
@@ -281,7 +298,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
             data = (uint8_t *)&old_params;
 
             R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
-                              (uint8_t *)MAIN_PARAMS_ADDR,
+                              (uint8_t *)sblBootParams,
                               FW_UP_BOOT_PARAMS_SIZE);
 
             do {
@@ -295,7 +312,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
                 R_XSPI_QSPI_Write(&g_qspi0_ctrl,
                                   data + offset,
-                                  (uint8_t *)(MAIN_PARAMS_ADDR + offset),
+                                  (uint8_t *)(sblBootParams + offset),
                                   write_size);
 
                 do {
@@ -310,8 +327,13 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
     }
 
     // 5. 写入备份区
+    // 使用flash_config.h中定义的地址
+	uint32_t sblBootParamsBackup = (uint32_t)SBL_BOOT_PARAMS_ADDR_BACKUP;
+
+	LOG_DEBUG("SBL_BOOT_PARAMS_ADDR_BACKUP=%08X %08X\n", SBL_BOOT_PARAMS_ADDR_BACKUP, sblBootParamsBackup);
+
     R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
-                      (uint8_t *)BACKUP_PARAMS_ADDR,
+                      (uint8_t *)sblBootParamsBackup,
                       FW_UP_BOOT_PARAMS_SIZE);
 
     do {
@@ -328,7 +350,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
         R_XSPI_QSPI_Write(&g_qspi0_ctrl,
                           data + offset,
-                          (uint8_t *)(BACKUP_PARAMS_ADDR + offset),
+                          (uint8_t *)(sblBootParamsBackup + offset),
                           write_size);
 
         do {
@@ -352,7 +374,9 @@ bool SblBootParams_ValidateCRC(const sbl_boot_params_t *params)
     // 计算CRC (不包括最后的crc32字段)
     uint32_t calc_crc = CRC_Calculate(&ctx,
                                       (char *)params,
-                                      sizeof(sbl_boot_params_t) - 4);
+                                      sizeof(sbl_boot_params_fields_t) -sizeof(uint32_t));
+
+    LOG_DEBUG("calc_crc=%08X calc_len=%d params->f.crc32==%08X \n", calc_crc, sizeof(sbl_boot_params_fields_t) -sizeof(uint32_t), params->f.crc32);
 
     return (calc_crc == params->f.crc32);
 }
@@ -368,7 +392,26 @@ void SblBootParams_UpdateCRC(sbl_boot_params_t *params)
     // 计算CRC (不包括最后的crc32字段)
     params->f.crc32 = CRC_Calculate(&ctx,
                                   (char *)params,
-                                  sizeof(sbl_boot_params_t) - 4);
+                                  sizeof(sbl_boot_params_fields_t) -sizeof(uint32_t));
+}
+
+/*
+ * 获取目标启动的APP
+ */
+uint8_t SblBootParams_GetCurrentApp(void)
+{
+    sbl_boot_params_t params;
+
+    if (!SblBootParams_Read(&params))
+        return BANK_UNKNOWN;
+
+    if (!SblBootParams_ValidateCRC(&params))
+    {
+        LOG_ERROR("SBL Boot Params CRC check failed!\n");
+        return BANK_UNKNOWN;
+    }
+
+    return params.f.target_app;
 }
 
 /*

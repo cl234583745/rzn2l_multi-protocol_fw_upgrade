@@ -56,11 +56,11 @@ bool SblBootParams_Write(const sbl_boot_params_t *params);
 bool SblBootParams_ValidateCRC(const sbl_boot_params_t *params);
 void SblBootParams_UpdateCRC(sbl_boot_params_t *params);
 
+// 获取当前启动的APP
+uint8_t SblBootParams_GetCurrentApp(void);
+
 // 获取当前Bank
 uint8_t SblBootParams_GetCurrentBank(void);
-
-// 获取目标APP
-uint8_t SblBootParams_GetTargetApp(void);
 
 // 设置目标APP
 bool SblBootParams_SetTargetApp(uint8_t app_id);
