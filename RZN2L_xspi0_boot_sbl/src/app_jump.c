@@ -160,7 +160,7 @@ app_jump_result_t AppJump_ToApp(uint8_t app_id, uint8_t bank_id)
     LOG_INFO("Copy completed\n");
 
     // 执行跳转 (CR52内核)
-    LOG_INFO("Jumping to APP%d Bank%d at 0x%08X\n", app_id, bank_id, jump_info.entry_point);
+    LOG_INFO("Jumping to APP%d Bank%d at SRAM:0x%08X\n", app_id, bank_id, jump_info.entry_point);
 
     // 跳转前准备
     __asm volatile("dsb");  // 确保数据同步

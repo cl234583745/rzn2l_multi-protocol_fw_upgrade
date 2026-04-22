@@ -312,7 +312,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
             Buffer.dword[i] = ota_handle.current_header.dword[i];
         }
         ESC_EepromAccess(SII_EEP_IDENTIFY_OFFSET + SII_EEP_REVESIONNO, 2, &Buffer.word[SII_EEP_REVESIONNO], ESC_WR);
-        LOG_INFO("SII updated: Revision=0x%04X\n", Buffer.word[SII_EEP_REVESIONNO]);
+        LOG_INFO("SII updated: Revision=0x%08X\n", Buffer.word[SII_EEP_REVESIONNO]);
 
         // 3. 更新Boot Params
         sbl_boot_params_t sbl_boot_params;

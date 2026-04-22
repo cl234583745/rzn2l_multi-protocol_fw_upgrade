@@ -22,42 +22,40 @@ extern CRC_Context ctx;
 
 /*
  * 初始化 SBL Boot Params
+ * 启动决策逻辑:
+ * 1. 读取并校验SBL Boot Params CRC
+ * 2. 校验APP1 Bank0和Bank1的完整性
+ * 3. 根据校验结果决定:
+ *    - SBL有效 + 当前Bank有效 -> 正常启动
+ *    - SBL有效 + 当前Bank无效 + 另一Bank有效 -> 回滚到另一Bank
+ *    - SBL无效 + 有Bank有效 -> 重建SBL Boot Params
+ *    - SBL无效 + 无Bank有效 -> 报错停止
  */
 void SblBootParams_Init(void)
 {
     sbl_boot_params_t boot_params;
-
-    // 1. 读取 SBL Boot Params
-    if (!SblBootParams_Read(&boot_params))
-    {
-        LOG_ERROR("Failed to read SBL Boot Params!\n");
-        //return;
-    }
-
-    // 2. 验证CRC
-    if (!SblBootParams_ValidateCRC(&boot_params))
-    {
-        LOG_ERROR("SBL Boot Params CRC check failed!\n");
+    bool sbl_valid = false;
+    bool bank0_valid = false;
+    bool bank1_valid = false;
+    app_header_t *header0 = NULL;
+    app_header_t *header1 = NULL;
 
 #if APP1_ENABLE
-        //static char app1_str[] = {"APP1"};
-        // 3. 检查Bank0和Bank1的固件有效性
-        bool bank0_valid = false;
-        bool bank1_valid = false;
+    // 1. 检查Bank0
+    uint32_t bank0_addr = (uint32_t)APP1_BANK0_BASE_ADDR - FW_UP_MIRROR_OFFSET;
+    header0 = (app_header_t *)bank0_addr;
 
-        // 检查Bank0
-        uint32_t bank0_addr = (uint32_t)APP1_BANK0_BASE_ADDR - FW_UP_MIRROR_OFFSET;
-        app_header_t *header0 = (app_header_t *)bank0_addr;
+    LOG_DEBUG("APP1_BANK0_BASE_ADDR=%08X %08X %08X\n", APP1_BANK0_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank0_addr);
 
-        LOG_DEBUG("APP1_BANK0_BASE_ADDR=%08X %08X %08X\n", APP1_BANK0_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank0_addr);
-
-
-        if (memcmp(header0->header_app, APP1_STR, strlen(APP1_STR)) == 0)
+    if (memcmp(header0->header_app, APP1_STR, strlen(APP1_STR)) == 0)
+    {
+        if (header0->header_len > 4 && header0->header_len < 0x100000)
         {
             uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank0_addr, (int)(header0->header_len - 4));
-
             uint32_t crc_flash;
             memcpy(&crc_flash, (uint8_t *)(bank0_addr + header0->header_len - 4), sizeof(uint32_t));
+
+            LOG_DEBUG("Bank0: crcCalRet=%08X crc_flash=%08X calc_len=%d\n", crcCalRet, crc_flash, (int)(header0->header_len - 4));
 
             if (crcCalRet == crc_flash)
             {
@@ -66,113 +64,177 @@ void SblBootParams_Init(void)
             }
             else
             {
-                LOG_ERROR("Bank0 CRC check failed!\n");
+                LOG_ERROR("Bank0 CRC check failed! crcCalRet=%08X crc_flash=%08X\n", crcCalRet, crc_flash);
             }
         }
-
-        // 检查Bank1
-        uint32_t bank1_addr = (uint32_t)APP1_BANK1_BASE_ADDR - FW_UP_MIRROR_OFFSET;
-        app_header_t *header1 = (app_header_t *)bank1_addr;
-
-        LOG_DEBUG("APP1_BANK1_BASE_ADDR=%08X %08X %08X\n", APP1_BANK1_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank1_addr);
-
-
-        if (memcmp(header1->header_app, APP1_STR, strlen(APP1_STR)) == 0)
+        else
         {
-            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
-
-            uint32_t crc_flash;
-            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - sizeof(uint32_t)), sizeof(uint32_t));
-
-            if (crcCalRet == crc_flash)
-            {
-                bank1_valid = true;
-                LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);
-            }
-            else
-            {
-                LOG_ERROR("Bank1 CRC check failed!\n");
-            }
+            LOG_ERROR("Bank0 header_len invalid: %d\n", header0->header_len);
         }
+    }
+    else
+    {
+        LOG_DEBUG("Bank0 header_app mismatch\n");
+    }
 
-        // 4. 选择有效的Bank
-        uint8_t boot_bank = BANK_UNKNOWN;
+    // 2. 检查Bank1
+    uint32_t bank1_addr = (uint32_t)APP1_BANK1_BASE_ADDR - FW_UP_MIRROR_OFFSET;
+    header1 = (app_header_t *)bank1_addr;
+
+    LOG_DEBUG("APP1_BANK1_BASE_ADDR=%08X %08X %08X\n", APP1_BANK1_BASE_ADDR, FW_UP_MIRROR_OFFSET, bank1_addr);
+
+    if (memcmp(header1->header_app, APP1_STR, strlen(APP1_STR)) == 0)
+    {
+        uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
+        uint32_t crc_flash;
+        memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - sizeof(uint32_t)), sizeof(uint32_t));
+
+        LOG_DEBUG("Bank1: crcCalRet=%08X crc_flash=%08X calc_len=%d\n", crcCalRet, crc_flash, (int)(header1->header_len - 4));
+
+        if (crcCalRet == crc_flash)
+        {
+            bank1_valid = true;
+            LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);
+        }
+        else
+        {
+            LOG_ERROR("Bank1 CRC check failed! crcCalRet=%08X crc_flash=%08X\n", crcCalRet, crc_flash);
+        }
+    }
+#endif
+
+    // 3. 读取并校验SBL Boot Params
+    if (SblBootParams_Read(&boot_params))
+    {
+        if (SblBootParams_ValidateCRC(&boot_params))
+        {
+            sbl_valid = true;
+            LOG_INFO("SBL Boot Params CRC OK. Current Bank=%d\n", boot_params.f.current_bank);
+        }
+        else
+        {
+            LOG_ERROR("SBL Boot Params CRC invalid!\n");
+        }
+    }
+    else
+    {
+        LOG_ERROR("Failed to read SBL Boot Params!\n");
+    }
+
+    // 4. 根据SBL和APP状态决定启动策略
+#if APP1_ENABLE
+    uint8_t boot_bank = BANK_UNKNOWN;
+
+    if (sbl_valid)
+    {
+        // SBL有效，根据当前Bank状态决定
+        if ((boot_params.f.current_bank == BANK_0 && bank0_valid) ||
+            (boot_params.f.current_bank == BANK_1 && bank1_valid))
+        {
+            // 当前Bank有效，正常启动
+            LOG_INFO("Normal boot: Bank=%d valid\n", boot_params.f.current_bank);
+        }
+        else if (boot_params.f.current_bank == BANK_0 && !bank0_valid && bank1_valid)
+        {
+            // Bank0无效，尝试回滚到Bank1
+            LOG_WARN("Bank0 invalid, rolling back to Bank1...\n");
+            boot_params.f.current_bank = BANK_1;
+            boot_params.f.target_bank = BANK_1;
+            SblBootParams_UpdateCRC(&boot_params);
+            SblBootParams_Write(&boot_params);
+            LOG_INFO("Rollback to Bank1 complete\n");
+        }
+        else if (boot_params.f.current_bank == BANK_1 && !bank1_valid && bank0_valid)
+        {
+            // Bank1无效，尝试回滚到Bank0
+            LOG_WARN("Bank1 invalid, rolling back to Bank0...\n");
+            boot_params.f.current_bank = BANK_0;
+            boot_params.f.target_bank = BANK_0;
+            SblBootParams_UpdateCRC(&boot_params);
+            SblBootParams_Write(&boot_params);
+            LOG_INFO("Rollback to Bank0 complete\n");
+        }
+        else
+        {
+            // 当前Bank无效，另一Bank也无效
+            LOG_ERROR("Both banks invalid! Cannot boot!\n");
+            while(1) { }
+        }
+    }
+    else
+    {
+        // SBL无效，尝试从有效的Bank重建
         if (bank0_valid && bank1_valid)
         {
             // 两个Bank都有效，选择版本号更高的
             boot_bank = (header0->header_version >= header1->header_version) ? BANK_0 : BANK_1;
+            LOG_INFO("SBL invalid, selecting higher version bank: Bank=%d\n", boot_bank);
         }
         else if (bank0_valid)
         {
             boot_bank = BANK_0;
+            LOG_INFO("SBL invalid, selecting Bank0\n");
         }
         else if (bank1_valid)
         {
             boot_bank = BANK_1;
+            LOG_INFO("SBL invalid, selecting Bank1\n");
         }
         else
         {
-            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
-            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
-            LOG_ERROR("APP1 No valid firmware found in Bank0 or Bank1!\n");
-
+            // 没有有效的Bank
+            LOG_ERROR("No valid firmware found in any bank!\n");
+            while(1) { }
         }
 
-        if (bank0_valid || bank1_valid)
+        // 重建SBL Boot Params
+        sbl_boot_params_t new_params;
+        memset(&new_params, 0, sizeof(sbl_boot_params_t));
+
+        app_header_t *selected_header = (boot_bank == BANK_0) ? header0 : header1;
+
+        memcpy(new_params.f.header_app, selected_header->header_app, strlen(APP1_STR));
+        new_params.f.header_version = selected_header->header_version;
+        new_params.f.target_app = APP1_ID;
+        new_params.f.current_bank = boot_bank;
+        new_params.f.target_bank = boot_bank;
+        new_params.f.version_check_enable = SBL_BOOT_PARAMS_VERSION_CHECK_ENABLE;
+        new_params.f.vendor_id = selected_header->dword[0];
+        new_params.f.product_code = selected_header->dword[1];
+        new_params.f.revision_number = selected_header->dword[2];
+        new_params.f.serial_number = selected_header->dword[3];
+
+        SblBootParams_UpdateCRC(&new_params);
+
+        if (!SblBootParams_Write(&new_params))
         {
-            // 5. 构造新的 SBL Boot Params
-            sbl_boot_params_t new_params;
-            memset(&new_params, 0, sizeof(sbl_boot_params_t));
-
-            app_header_t *selected_header = (boot_bank == BANK_0) ? header0 : header1;
-
-            memcpy(new_params.f.header_app, selected_header->header_app, strlen(APP1_STR));
-            new_params.f.header_version = selected_header->header_version;
-            new_params.f.target_app = APP1_ID;
-            new_params.f.current_bank = boot_bank;
-            new_params.f.target_bank = boot_bank;
-            new_params.f.version_check_enable = SBL_BOOT_PARAMS_VERSION_CHECK_ENABLE;
-            new_params.f.vendor_id = selected_header->dword[0];
-            new_params.f.product_code = selected_header->dword[1];
-            new_params.f.revision_number = selected_header->dword[2];
-            new_params.f.serial_number = selected_header->dword[3];
-
-            SblBootParams_UpdateCRC(&new_params);
-
-            // 6. 写入 SBL Boot Params
-            if (!SblBootParams_Write(&new_params))
-            {
-                LOG_ERROR("Failed to write SBL Boot Params!\n");
-                return;
-            }
-
-            LOG_INFO("SBL Boot Params reconstructed: Bank=%d, Version=0x%08X, new_params.f.version_check_enable=%d\n",
-                     boot_bank, new_params.f.header_version,new_params.f.version_check_enable);
+            LOG_ERROR("Failed to write SBL Boot Params!\n");
+            while(1) { }
         }
-#endif//#if APP1_ENABLE
 
-#if APP2_ENABLE
+        LOG_INFO("SBL Boot Params reconstructed: Bank=%d, Version=0x%08X\n",
+                    boot_bank, new_params.f.header_version);
 
-#endif//#if APP2_ENABLE
-
-#if APP3_ENABLE
-
-#endif//#if APP3_ENABLE
-
-#if APP4_ENABLE
-
-#endif//#if APP4_ENABLE
-
-#if APP5_ENABLE
-
-#endif//#if APP5_ENABLE
-
+        // 使用重建的参数
+        memcpy(&boot_params, &new_params, sizeof(sbl_boot_params_t));
     }
-    else
+
+    // 5. 输出最终启动信息
+    LOG_INFO("=== Boot Info ===\n");
+    LOG_INFO("  Target APP: APP%d\n", boot_params.f.target_app);
+    LOG_INFO("  Current Bank: %d\n", boot_params.f.current_bank);
+    LOG_INFO("  Target Bank: %d\n", boot_params.f.target_bank);
+    LOG_INFO("  Firmware Version: 0x%08X\n", boot_params.f.header_version);
+    LOG_INFO("  Version Check: %s\n", boot_params.f.version_check_enable ? "Enabled" : "Disabled");
+    LOG_INFO("==================\n");
+
+#else
+    if (!sbl_valid)
     {
-        LOG_INFO("SBL Boot Params OK: Bank=%d, Version=0x%08X, new_params.f.version_check_enable=%d\n",
-                 boot_params.f.current_bank, boot_params.f.header_version,boot_params.f.version_check_enable);
+        LOG_ERROR("SBL Boot Params invalid and APP1 not enabled!\n");
+        while(1) { }
     }
+#endif
 }
 
 /*

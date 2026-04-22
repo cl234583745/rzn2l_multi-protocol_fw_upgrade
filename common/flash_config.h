@@ -83,9 +83,18 @@ extern uint32_t APP1_BANK1_BASE_ADDR[];
 #if SBL_ENABLE
 
 /* loader_table_t definition (256 bytes per entry) */
-#define LOADER_TABLE_SIZE  256
+//APP1_HEADER_LENS = 0x00000074;          /*116B*/
+//APP1_IDENTIFY_LENS = 0x00000010;        /*16B*/
+//因为ECAT FOE单次传输长度是116，#define FW_UP_PACKAGE_SIZE      (116)// package send size
+//所以固件头部最长100，方便第一包就解析数据，与FW_UP_PACKAGE_SIZE相同
+#define ECAT_FOE_PACKAGE_LENS      	100
+#define LOADER_TABLE_SIZE  			ECAT_FOE_PACKAGE_LENS
+#define SBL_BOOT_PARAMS_SIZE  		ECAT_FOE_PACKAGE_LENS
+// 也可以直接定义版本号，不使用字符串解析
+#define APP1_HEADER_BUF_LENS  		ECAT_FOE_PACKAGE_LENS
+#define APP1_IDENTIFY_BUF_LENS  	16/sizeof(uint32_t) // 4个32位字段
 
-#define SBL_BOOT_PARAMS_SIZE  256
+
 
 extern uint32_t SBL_BOOT_PARAMS_ADDR[];
 extern uint32_t SBL_BOOT_PARAMS_ADDR_BACKUP[];
@@ -108,7 +117,7 @@ extern uint32_t APP1_IDENTIFY_LENS[];       /*16B*/
  * 版本号由4个8位字段组成：主版本号、次版本号、补丁号和修订号
  * 通过宏定义设置默认版本号，也可以在编译时覆盖
  */
-#define APP1_STR "APP1"
+#define APP1_STR "APP1"		//固定格式不要修改：APP1 APP2
 
 #define APP1_STR_1 ((APP1_STR)[0])  // 'A'
 #define APP1_STR_2 ((APP1_STR)[1])  // 'P'
@@ -116,20 +125,20 @@ extern uint32_t APP1_IDENTIFY_LENS[];       /*16B*/
 #define APP1_STR_4 ((APP1_STR)[3])  // '1'
 
 /* 版本号定义
- 可以通过修改APP1_VERSION_STR来设置版本号，格式为 "X.Y.Z.W"
- 也可以直接修改APP1_VERSION_MAJOR等宏来设置版本号
+ 修改下方 VERSION_MAJOR/MINOR/PATCH/REVISION 四个值来设置版本号
+ 字符串 APP1_VERSION_STR 会自动同步更新
  */
-#define APP1_VERSION_STR "1.2.3.5"
-#define CHAR_TO_NUM(c) ((c) - '0')
-#define APP1_VERSION_MAJOR      CHAR_TO_NUM(APP1_VERSION_STR[0])  // '1' -> 1
-#define APP1_VERSION_MINOR      CHAR_TO_NUM(APP1_VERSION_STR[2])  // '2' -> 2
-#define APP1_VERSION_PATCH      CHAR_TO_NUM(APP1_VERSION_STR[4])  // '3' -> 3
-#define APP1_VERSION_REVISION   CHAR_TO_NUM(APP1_VERSION_STR[6])  // '4' -> 4
+#define APP1_VERSION_MAJOR      1
+#define APP1_VERSION_MINOR      2
+#define APP1_VERSION_PATCH      3
+#define APP1_VERSION_REVISION   11
 #define APP1_VERSION ((APP1_VERSION_MAJOR << 24) | (APP1_VERSION_MINOR << 16) | (APP1_VERSION_PATCH << 8) | APP1_VERSION_REVISION)
 
-// 也可以直接定义版本号，不使用字符串解析
-#define APP1_HEADER_BUF_LENS  256
-#define APP1_IDENTIFY_BUF_LENS  16/sizeof(uint32_t) // 4个32位字段  
+#define _STRINGIFY(x) #x
+#define STRINGIFY(x) _STRINGIFY(x)
+#define APP1_VERSION_STR STRINGIFY(APP1_VERSION_MAJOR) "." STRINGIFY(APP1_VERSION_MINOR) "." STRINGIFY(APP1_VERSION_PATCH) "." STRINGIFY(APP1_VERSION_REVISION)
+
+
 
 /* Bank类型定义 */
 #define BANK_UNKNOWN            0xFF
