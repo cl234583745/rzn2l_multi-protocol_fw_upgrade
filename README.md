@@ -489,7 +489,36 @@ const loader_table table[TABLE_ENTRY_NUM] = {
 };
 ```
 
-## 11. 常见问题
+## 11. 调试配置说明
+
+### 11.1 SBL + APP1 联合调试
+
+当使用e2studio联合调试SBL和APP1时，需要正确配置APP1的加载类型：
+
+1. **Debug As → Debug Configurations**
+2. 选择SBL的调试配置
+3. 进入 **"Load Images"** 或 **"Download Images"** 页面
+4. 找到APP1的elf加载配置，将加载类型改为 **"仅符号"**（不选"映像"）
+
+**原因**：
+- APP1编译后生成的 `RZN2L_xspi0_app1.bin` 不包含固件头（APP1_STR + 版本号 + 长度 + CRC32）
+- 运行 `attach_crc.py` 后生成 `_with_crc.bin` 才包含完整的固件头
+- SBL集成时会将 `_with_crc.bin` 作为section打包
+- Debug时如果选择"映像和符号"，APP1 elf会覆盖正确的固件头，导致调试异常
+- 选择"仅符号"只加载调试符号，不下载代码，不会覆盖已下载的正确固件头
+
+| 加载类型 | SBL调试 | APP1调试 | 跳转后断点 |
+|---------|--------|---------|-----------|
+| 映像和符号 | ✗ | ✗ | ✗ |
+| 仅映像 | ✓ | ✗ | ✗ |
+| 仅符号 | ✓ | ✓ | ✓ |
+| Raw Binary | ✓ | ✓ | ✗ |
+
+### 11.2 .elf.launch 文件
+
+调试配置文件（`*.elf.launch`）包含用户特定的路径和配置，**不应提交到GitHub**。
+
+## 13. 常见问题
 
 ### Q1: 找不到Python
 
@@ -516,4 +545,4 @@ Jerry.Chen
 
 ## 13. 日期
 
-2026-04-18
+2026-04-22

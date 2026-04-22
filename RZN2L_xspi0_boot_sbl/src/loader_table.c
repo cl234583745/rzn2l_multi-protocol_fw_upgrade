@@ -29,23 +29,8 @@ const loader_table_t loader_table[TABLE_ENTRY_NUM] BSP_PLACE_IN_SECTION("CPU0_LO
 {
 #if APP1_ENABLE
   { .f = { (uint32_t *)app1_bank0_prg_flash_addr, (uint32_t *)app1_bank0_prg_start_addr, (uint32_t)app1_bank0_prg_size, (uint32_t)APP1_ENABLE, APP1_ID, BANK0_ID, APP1_DUAL_BANK }, {0} },
-  { .f = { (uint32_t *)app1_bank1_prg_flash_addr, (uint32_t *)app1_bank1_prg_start_addr, (uint32_t)app1_bank1_prg_size, (uint32_t)APP1_DUAL_BANK, APP1_ID, BANK1_ID, 0 }, {0} },
+  { .f = { (uint32_t *)app1_bank1_prg_flash_addr, (uint32_t *)app1_bank1_prg_start_addr, (uint32_t)app1_bank1_prg_size, (uint32_t)APP1_ENABLE, APP1_ID, BANK1_ID, APP1_DUAL_BANK }, {0} },
 #endif
-#if APP2_ENABLE
-  { .f = { (uint32_t *)app2_bank0_prg_flash_addr, (uint32_t *)app2_bank0_prg_start_addr, (uint32_t)app2_bank0_prg_size, (uint32_t)APP2_ENABLE, APP2_ID, BANK0_ID, APP2_DUAL_BANK }, {0} },
-  { .f = { (uint32_t *)app2_bank1_prg_flash_addr, (uint32_t *)app2_bank1_prg_start_addr, (uint32_t)app2_bank1_prg_size, (uint32_t)APP2_DUAL_BANK, APP2_ID, BANK1_ID, 0 }, {0} },
-#endif
-#if APP3_ENABLE
-  { .f = { (uint32_t *)app3_bank0_prg_flash_addr, (uint32_t *)app3_bank0_prg_start_addr, (uint32_t)app3_bank0_prg_size, (uint32_t)APP3_ENABLE, APP3_ID, BANK0_ID, APP3_DUAL_BANK }, {0} },
-  { .f = { (uint32_t *)app3_bank1_prg_flash_addr, (uint32_t *)app3_bank1_prg_start_addr, (uint32_t)app3_bank1_prg_size, (uint32_t)APP3_DUAL_BANK, APP3_ID, BANK1_ID, 0 }, {0} },
-#endif
-#if APP4_ENABLE
-  { .f = { (uint32_t *)app4_bank0_prg_flash_addr, (uint32_t *)app4_bank0_prg_start_addr, (uint32_t)app4_bank0_prg_size, (uint32_t)APP4_ENABLE, APP4_ID, BANK0_ID, APP4_DUAL_BANK }, {0} },
-  { .f = { (uint32_t *)app4_bank1_prg_flash_addr, (uint32_t *)app4_bank1_prg_start_addr, (uint32_t)app4_bank1_prg_size, (uint32_t)APP4_DUAL_BANK, APP4_ID, BANK1_ID, 0 }, {0} },
-#endif
-#if APP5_ENABLE
-  { .f = { (uint32_t *)app5_bank0_prg_flash_addr, (uint32_t *)app5_bank0_prg_start_addr, (uint32_t)app5_bank0_prg_size, (uint32_t)APP5_ENABLE, APP5_ID, BANK0_ID, APP5_DUAL_BANK }, {0} },
-  { .f = { (uint32_t *)app5_bank1_prg_flash_addr, (uint32_t *)app5_bank1_prg_start_addr, (uint32_t)app5_bank1_prg_size, (uint32_t)APP5_DUAL_BANK, APP5_ID, BANK1_ID, 0 }, {0} },
-#endif
+
 
 };
