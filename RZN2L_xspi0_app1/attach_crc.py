@@ -56,112 +56,86 @@ def parse_version(version_str):
         version = (major << 16) | (minor << 8) | patch
     return version
 
-def read_app1_str_from_c_code(project_root):
+def read_app1_str_from_flash_config(project_root):
     """
-    从C代码中读取APP1_STR_1-4
+    从flash_config.h中读取APP1_STR
     """
-    bootmode_c = os.path.join(project_root, "src", "ethercat", "beckhoff", "Src", "bootmode.c")
+    flash_config_h = os.path.join(os.path.dirname(project_root), "common", "flash_config.h")
 
-    if not os.path.exists(bootmode_c):
-        print(f"[WARNING] Cannot find bootmode.c: {bootmode_c}")
+    if not os.path.exists(flash_config_h):
+        print(f"[WARNING] Cannot find flash_config.h: {flash_config_h}")
         return None
 
     try:
-        with open(bootmode_c, 'r', encoding='utf-8') as f:
+        with open(flash_config_h, 'r', encoding='utf-8') as f:
             content = f.read()
 
-        str_values = []
-        for i in range(1, 5):
-            pattern = rf'#define\s+APP1_STR_{i}\s+(\'.\')'
-            match = re.search(pattern, content)
-            if match:
-                char = match.group(1).strip("'")
-                str_values.append(char)
-            else:
-                print(f"[WARNING] APP1_STR_{i} not found in {bootmode_c}")
-                return None
-
-        if len(str_values) == 4:
-            result = ''.join(str_values)
-            print(f"[INFO] Found APP1_STR in C code: '{result}'")
+        pattern = r'#define\s+APP1_STR\s+"(\w+)"'
+        match = re.search(pattern, content)
+        if match:
+            result = match.group(1)
+            print(f"[INFO] Found APP1_STR in flash_config.h: '{result}'")
             return result
 
-    except Exception as e:
-        print(f"[ERROR] Failed to read C code: {e}")
+        print(f"[WARNING] APP1_STR not found in {flash_config_h}")
         return None
 
-    return None
+    except Exception as e:
+        print(f"[ERROR] Failed to read flash_config.h: {e}")
+        return None
 
-def read_version_from_c_code(project_root):
+def read_version_from_flash_config(project_root):
     """
-    从C代码中读取APP1版本号
+    从flash_config.h中读取APP1版本号
     支持两种格式:
-    1. 分开定义: APP1_VERSION_MAJOR, APP1_VERSION_MINOR, APP1_VERSION_PATCH, APP1_VERSION_REVISION
-    2. 组合定义: APP1_VERSION 0xXXXXXXXX
+    1. APP1_VERSION_STR "X.Y.Z.W"
+    2. APP1_VERSION ((APP1_VERSION_MAJOR << 24) | ...)
     """
-    bootmode_c = os.path.join(project_root, "src", "ethercat", "beckhoff", "Src", "bootmode.c")
+    flash_config_h = os.path.join(os.path.dirname(project_root), "common", "flash_config.h")
 
-    if not os.path.exists(bootmode_c):
-        print(f"[WARNING] Cannot find bootmode.c: {bootmode_c}")
+    if not os.path.exists(flash_config_h):
+        print(f"[WARNING] Cannot find flash_config.h: {flash_config_h}")
         return None
 
     try:
-        with open(bootmode_c, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
+        with open(flash_config_h, 'r', encoding='utf-8') as f:
+            content = f.read()
 
-        # 方法1: 读取分开定义的版本号 (优先, 支持3或4分量)
-        major_value = None
-        minor_value = None
-        patch_value = None
-        revision_value = None
-
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('//') or stripped.startswith('/*'):
-                continue
-
-            major_match = re.match(r'#define\s+APP1_VERSION_MAJOR\s+(\d+)', stripped)
-            minor_match = re.match(r'#define\s+APP1_VERSION_MINOR\s+(\d+)', stripped)
-            patch_match = re.match(r'#define\s+APP1_VERSION_PATCH\s+(\d+)', stripped)
-            revision_match = re.match(r'#define\s+APP1_VERSION_REVISION\s+(\d+)', stripped)
-
-            if major_match:
-                major_value = int(major_match.group(1))
-            if minor_match:
-                minor_value = int(minor_match.group(1))
-            if patch_match:
-                patch_value = int(patch_match.group(1))
-            if revision_match:
-                revision_value = int(revision_match.group(1))
-
-        if major_value is not None and minor_value is not None and patch_value is not None:
-            if revision_value is not None:
-                version = (major_value << 24) | (minor_value << 16) | (patch_value << 8) | revision_value
-                version_str = f"{major_value}.{minor_value}.{patch_value}.{revision_value}"
-            else:
-                version = (major_value << 16) | (minor_value << 8) | patch_value
-                version_str = f"{major_value}.{minor_value}.{patch_value}"
-            print(f"[INFO] Found APP1 version in C code: {version_str} -> 0x{version:08X}")
+        # 方法1: 读取APP1_VERSION_STR字符串
+        str_match = re.search(r'#define\s+APP1_VERSION_STR\s+"(\d+)\.(\d+)\.(\d+)\.(\d+)"', content)
+        if str_match:
+            major = int(str_match.group(1))
+            minor = int(str_match.group(2))
+            patch = int(str_match.group(3))
+            revision = int(str_match.group(4))
+            version = (major << 24) | (minor << 16) | (patch << 8) | revision
+            version_str = f"{major}.{minor}.{patch}.{revision}"
+            print(f"[INFO] Found APP1_VERSION in flash_config.h: {version_str} -> 0x{version:08X}")
             return version
 
-        # 方法2: 读取组合定义的版本号 (备用)
-        for line in lines:
-            stripped = line.strip()
-            if stripped.startswith('//') or stripped.startswith('/*'):
-                continue
+        # 方法2: 读取组合定义的APP1_VERSION表达式
+        expr_match = re.search(r'#define\s+APP1_VERSION\s+\(\(APP1_VERSION_MAJOR\s+<<\s+24\)\s+\|\s+\(APP1_VERSION_MINOR\s+<<\s+16\)\s+\|\s+\(APP1_VERSION_PATCH\s+<<\s+8\)\s+\|\s+APP1_VERSION_REVISION\)', content)
+        if expr_match:
+            major_match = re.search(r'#define\s+APP1_VERSION_MAJOR\s+(\d+)', content)
+            minor_match = re.search(r'#define\s+APP1_VERSION_MINOR\s+(\d+)', content)
+            patch_match = re.search(r'#define\s+APP1_VERSION_PATCH\s+(\d+)', content)
+            revision_match = re.search(r'#define\s+APP1_VERSION_REVISION\s+(\d+)', content)
 
-            match = re.match(r'#define\s+APP1_VERSION\s+(0x[0-9A-Fa-f]+)', stripped)
-            if match:
-                version_hex = match.group(1)
-                version = int(version_hex, 16)
-                print(f"[INFO] Found APP1_VERSION in C code: {version_hex} -> 0x{version:08X}")
+            if major_match and minor_match and patch_match and revision_match:
+                major = int(major_match.group(1))
+                minor = int(minor_match.group(1))
+                patch = int(patch_match.group(1))
+                revision = int(revision_match.group(1))
+                version = (major << 24) | (minor << 16) | (patch << 8) | revision
+                version_str = f"{major}.{minor}.{patch}.{revision}"
+                print(f"[INFO] Found APP1_VERSION in flash_config.h: {version_str} -> 0x{version:08X}")
                 return version
 
-        print(f"[WARNING] APP1 version not found in {bootmode_c}")
+        print(f"[WARNING] APP1_VERSION not found in {flash_config_h}")
         return None
 
     except Exception as e:
-        print(f"[ERROR] Failed to read C code: {e}")
+        print(f"[ERROR] Failed to read flash_config.h: {e}")
         return None
 
 def main():
@@ -181,9 +155,9 @@ def main():
     print(f"[INFO] Project Root: {PROJECT_ROOT}")
 
     # APP1_STR 优先级:
-    # 1. C代码中的 APP1_STR_1-4
+    # 1. flash_config.h中的 APP1_STR
     # 2. 默认值 "APP1"
-    app1_str = read_app1_str_from_c_code(PROJECT_ROOT)
+    app1_str = read_app1_str_from_flash_config(PROJECT_ROOT)
     if app1_str is None:
         app1_str = "APP1"
         print(f"[INFO] APP1_STR from default: '{app1_str}'")
@@ -205,8 +179,8 @@ def main():
             print(f"[ERROR] {e}")
             sys.exit(1)
     else:
-        # 尝试从C代码读取
-        version = read_version_from_c_code(PROJECT_ROOT)
+        # 尝试从flash_config.h读取
+        version = read_version_from_flash_config(PROJECT_ROOT)
         if version is not None:
             major = (version >> 24) & 0xFF
             minor = (version >> 16) & 0xFF
@@ -273,7 +247,13 @@ def main():
         f.write(data)
         f.write(crc_bytes)
 
+    # 复制为.efw文件
+    output_efw = output_bin.replace('.bin', '.efw')
+    import shutil
+    shutil.copy(output_bin, output_efw)
+
     print(f"[SUCCESS] Output: {output_bin}")
+    print(f"[SUCCESS] Output: {output_efw}")
     print(f"[SUCCESS] Size: {total_size} bytes ({len(data)} original + 4 CRC)")
     print("=" * 60)
 
