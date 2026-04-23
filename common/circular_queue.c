@@ -63,7 +63,7 @@ bool Queue_isFull(Circular_queue_t *circular_queue)
 uint16_t Queue_HadUse(Circular_queue_t *circular_queue)
 {
     if (!circular_queue)
-        return false;
+        return 0;
     return (uint16_t)(circular_queue->tail - circular_queue->head + DATA_LEN) % DATA_LEN;
 }
 
@@ -75,7 +75,7 @@ uint16_t Queue_HadUse(Circular_queue_t *circular_queue)
 uint16_t Queue_NoUse(Circular_queue_t *circular_queue)
 {
     if (!circular_queue)
-        return false;
+        return 0;
     return (uint16_t)(DATA_LEN - (circular_queue->tail -
            circular_queue->head + DATA_LEN) % DATA_LEN -1); //保留一个Byte数据用来区分队列的满和空状态
 }
@@ -87,7 +87,7 @@ uint16_t Queue_NoUse(Circular_queue_t *circular_queue)
  * @param len: 数据长度
  * @return 写入成功则返回true，反之或指针非法则false
  */
-bool Queue_Wirte( Circular_queue_t *circular_queue, uint8_t *string, uint16_t len)
+bool Queue_Write( Circular_queue_t *circular_queue, uint8_t *string, uint16_t len)
 {
     if (!circular_queue)
         return false;

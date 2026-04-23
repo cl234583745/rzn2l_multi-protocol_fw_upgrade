@@ -63,4 +63,4 @@ dkms.conf
 # e2studio launch configurations (user-specific)
 *.elf.launch
 *.jlink
-JLinkLog.log
+**/JLinkLog.log

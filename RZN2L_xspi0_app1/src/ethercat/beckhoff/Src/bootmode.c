@@ -244,7 +244,7 @@ UINT16 BL_Data(UINT16 *pData,UINT16 Size)
     }
 
     // 写入数据到环形队列
-    Queue_Wirte(&Circular_queue, (uint8_t*) ((uint8_t*)pData), Size);
+    Queue_Write(&Circular_queue, (uint8_t*) ((uint8_t*)pData), Size);
 
     // 队列满一页时写入Flash
     if(Queue_HadUse(&Circular_queue) >= FW_UP_PAGE_SIZE)

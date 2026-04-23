@@ -161,7 +161,7 @@ BSP_TARGET_ARM BSP_ATTRIBUTE_STACKLESS void __Vectors (void)
  **********************************************************************************************************************/
 void Default_Handler (void)
 {
-    //printf("%s\n", __FUNCTION__);
+    printf("%s\n", __FUNCTION__);
     while(1);
     /** A error has occurred. The user will need to investigate the cause. Common problems are stack corruption
      *  or use of an invalid pointer. Use the Fault Status window in e2 studio or manually check the fault status

@@ -99,7 +99,7 @@ __strong_reference(stdin, stderr);
   #pragma module_name = "?__write"
 size_t __write(int handle, const unsigned char * buffer, size_t size)
 {
-      USR_SCI_UART_Write(&g_uart9_ctrl, (uint8_t *)pBuffer, (uint32_t)size);
+      USR_SCI_UART_Write(&g_uart9_ctrl, (uint8_t *)buffer, (uint32_t)size);
 }
 #if __VER__ < 8000000
   _STD_END

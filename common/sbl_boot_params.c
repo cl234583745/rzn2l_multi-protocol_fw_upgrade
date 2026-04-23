@@ -13,6 +13,7 @@
 #include "crc32_table.h"
 #include "hal_data.h"
 #include "log.h"
+#include "qspi_utils.h"
 #include <string.h>
 
 #define CURRENT_LOG_LEVEL   LOG_LEVEL_DEBUG
@@ -85,21 +86,32 @@ void SblBootParams_Init(void)
 
     if (memcmp(header1->header_app, APP1_STR, strlen(APP1_STR)) == 0)
     {
-        uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
-        uint32_t crc_flash;
-        memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - sizeof(uint32_t)), sizeof(uint32_t));
+        if (header1->header_len > 4 && header1->header_len < 0x100000)
+        {   
+            uint32_t crcCalRet = CRC_Calculate(&ctx, (char*)bank1_addr, (int)(header1->header_len - 4));
+            uint32_t crc_flash;
+            memcpy(&crc_flash, (uint8_t *)(bank1_addr + header1->header_len - sizeof(uint32_t)), sizeof(uint32_t));
 
-        LOG_DEBUG("Bank1: crcCalRet=%08X crc_flash=%08X calc_len=%d\n", crcCalRet, crc_flash, (int)(header1->header_len - 4));
+            LOG_DEBUG("Bank1: crcCalRet=%08X crc_flash=%08X calc_len=%d\n", crcCalRet, crc_flash, (int)(header1->header_len - 4));
 
-        if (crcCalRet == crc_flash)
-        {
-            bank1_valid = true;
-            LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);
+            if (crcCalRet == crc_flash)
+            {
+                bank1_valid = true;
+                LOG_INFO("Bank1 firmware valid: Version=0x%08X\n", header1->header_version);
+            }
+            else
+            {
+                LOG_ERROR("Bank1 CRC check failed! crcCalRet=%08X crc_flash=%08X\n", crcCalRet, crc_flash);
+            }
         }
         else
         {
-            LOG_ERROR("Bank1 CRC check failed! crcCalRet=%08X crc_flash=%08X\n", crcCalRet, crc_flash);
-        }
+            LOG_ERROR("Bank1 header_len invalid: %d\n", header1->header_len);
+        }   
+    }
+    else
+    {
+        LOG_DEBUG("Bank1 header_app mismatch\n");   
     }
 #endif
 
@@ -159,6 +171,7 @@ void SblBootParams_Init(void)
             // 当前Bank无效，另一Bank也无效
             LOG_ERROR("Both banks invalid! Cannot boot!\n");
             while(1) { }
+            //TODO: 可以考虑进入DFU模式等待固件更新，或者重试机制
         }
     }
     else
@@ -185,6 +198,7 @@ void SblBootParams_Init(void)
             // 没有有效的Bank
             LOG_ERROR("No valid firmware found in any bank!\n");
             while(1) { }
+            //TODO: 可以考虑进入DFU模式等待固件更新，或者重试机制
         }
 
         // 重建SBL Boot Params
@@ -210,6 +224,7 @@ void SblBootParams_Init(void)
         {
             LOG_ERROR("Failed to write SBL Boot Params!\n");
             while(1) { }
+            //TODO: 可以考虑进入DFU模式等待固件更新，或者重试机制
         }
 
         LOG_INFO("SBL Boot Params reconstructed: Bank=%d, Version=0x%08X\n",
@@ -233,6 +248,7 @@ void SblBootParams_Init(void)
     {
         LOG_ERROR("SBL Boot Params invalid and APP1 not enabled!\n");
         while(1) { }
+        //TODO: 可以考虑进入DFU模式等待固件更新，或者重试机制
     }
 #endif
 }
@@ -295,8 +311,6 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
     if (params == NULL)
         return false;
 
-    spi_flash_status_t status_erase;
-
     // 使用flash_config.h中定义的地址
     uint32_t sblBootParams = (uint32_t)SBL_BOOT_PARAMS_ADDR;
 	uint32_t sblBootParamsMirror = (uint32_t)SBL_BOOT_PARAMS_ADDR - FW_UP_MIRROR_OFFSET;
@@ -317,9 +331,10 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
                       (uint8_t *)sblBootParams,
                       FW_UP_BOOT_PARAMS_SIZE);
 
-    do {
-        R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-    } while (status_erase.write_in_progress);
+    if (!QSPI_WaitEraseComplete(QSPI_ERASE_TIMEOUT_US))
+    {
+        return false;
+    }
 
     // 3. 写入新的 Boot Params 到主区域 (分多次写入，每次64字节)
     uint8_t *data = (uint8_t *)params;
@@ -336,9 +351,10 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
                           (uint8_t *)(sblBootParams + offset),
                           write_size);
 
-        do {
-            R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-        } while (status_erase.write_in_progress);
+        if (!QSPI_WaitWriteComplete(QSPI_WRITE_TIMEOUT_US))
+        {
+            return false;
+        }
 
         offset += write_size;
 
@@ -352,7 +368,7 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
     {
         LOG_ERROR("SblBootParams_Write: Verify failed!\n");
 
-        // 尝试恢复旧数据
+// 尝试恢复旧数据
         if (has_backup)
         {
             LOG_INFO("SblBootParams_Write: Restoring old params...\n");
@@ -363,9 +379,10 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
                               (uint8_t *)sblBootParams,
                               FW_UP_BOOT_PARAMS_SIZE);
 
-            do {
-                R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-            } while (status_erase.write_in_progress);
+            if (!QSPI_WaitEraseComplete(QSPI_ERASE_TIMEOUT_US))
+            {
+                return false;
+            }
 
             while (offset < total_size)
             {
@@ -377,9 +394,10 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
                                   (uint8_t *)(sblBootParams + offset),
                                   write_size);
 
-                do {
-                    R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-                } while (status_erase.write_in_progress);
+                if (!QSPI_WaitWriteComplete(QSPI_WRITE_TIMEOUT_US))
+                {
+                    return false;
+                }
 
                 offset += write_size;
             }
@@ -390,17 +408,18 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
 
     // 5. 写入备份区
     // 使用flash_config.h中定义的地址
-	uint32_t sblBootParamsBackup = (uint32_t)SBL_BOOT_PARAMS_ADDR_BACKUP;
+    uint32_t sblBootParamsBackup = (uint32_t)SBL_BOOT_PARAMS_ADDR_BACKUP;
 
-	LOG_DEBUG("SBL_BOOT_PARAMS_ADDR_BACKUP=%08X %08X\n", SBL_BOOT_PARAMS_ADDR_BACKUP, sblBootParamsBackup);
+    LOG_DEBUG("SBL_BOOT_PARAMS_ADDR_BACKUP=%08X %08X\n", SBL_BOOT_PARAMS_ADDR_BACKUP, sblBootParamsBackup);
 
     R_XSPI_QSPI_Erase(&g_qspi0_ctrl,
                       (uint8_t *)sblBootParamsBackup,
                       FW_UP_BOOT_PARAMS_SIZE);
 
-    do {
-        R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-    } while (status_erase.write_in_progress);
+    if (!QSPI_WaitEraseComplete(QSPI_ERASE_TIMEOUT_US))
+    {
+        return false;
+    }
 
     offset = 0;
     data = (uint8_t *)params;
@@ -415,9 +434,10 @@ bool SblBootParams_Write(const sbl_boot_params_t *params)
                           (uint8_t *)(sblBootParamsBackup + offset),
                           write_size);
 
-        do {
-            R_XSPI_QSPI_StatusGet(&g_qspi0_ctrl, &status_erase);
-        } while (status_erase.write_in_progress);
+        if (!QSPI_WaitWriteComplete(QSPI_WRITE_TIMEOUT_US))
+        {
+            return false;
+        }
 
         offset += write_size;
     }
